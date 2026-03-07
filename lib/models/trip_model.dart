@@ -1,0 +1,117 @@
+/// Segment-level deviation score against benchmark clusters.
+class SegmentScore {
+  final int? id;
+  final int segmentId;
+  final double cluster0Deviation;
+  final double cluster1Deviation;
+  final int matchedCluster;
+
+  SegmentScore({
+    this.id,
+    required this.segmentId,
+    required this.cluster0Deviation,
+    required this.cluster1Deviation,
+    required this.matchedCluster,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'segment_id': segmentId,
+      'cluster0_deviation': cluster0Deviation,
+      'cluster1_deviation': cluster1Deviation,
+      'matched_cluster': matchedCluster,
+    };
+  }
+
+  factory SegmentScore.fromMap(Map<String, dynamic> map) {
+    return SegmentScore(
+      id: map['id'] as int?,
+      segmentId: map['segment_id'] as int,
+      cluster0Deviation: (map['cluster0_deviation'] as num).toDouble(),
+      cluster1Deviation: (map['cluster1_deviation'] as num).toDouble(),
+      matchedCluster: map['matched_cluster'] as int,
+    );
+  }
+}
+
+/// Trip-level aggregated results.
+class TripSummary {
+  final String tripId;
+  final DateTime startTime;
+  final DateTime endTime;
+  final int totalSegments;
+  final int validSegments;
+  final int cluster0Matches;
+  final int cluster1Matches;
+  final double cluster0Percentage;
+  final double cluster1Percentage;
+  final double avgDeviationPlain;
+  final double avgDeviationUphill;
+  final double avgDeviationDownhill;
+  final double overallAvgDeviation;
+  final int plainSegments;
+  final int uphillSegments;
+  final int downhillSegments;
+
+  TripSummary({
+    required this.tripId,
+    required this.startTime,
+    required this.endTime,
+    required this.totalSegments,
+    required this.validSegments,
+    required this.cluster0Matches,
+    required this.cluster1Matches,
+    required this.cluster0Percentage,
+    required this.cluster1Percentage,
+    required this.avgDeviationPlain,
+    required this.avgDeviationUphill,
+    required this.avgDeviationDownhill,
+    required this.overallAvgDeviation,
+    required this.plainSegments,
+    required this.uphillSegments,
+    required this.downhillSegments,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'trip_id': tripId,
+      'start_time': startTime.millisecondsSinceEpoch,
+      'end_time': endTime.millisecondsSinceEpoch,
+      'total_segments': totalSegments,
+      'valid_segments': validSegments,
+      'cluster0_matches': cluster0Matches,
+      'cluster1_matches': cluster1Matches,
+      'cluster0_percentage': cluster0Percentage,
+      'cluster1_percentage': cluster1Percentage,
+      'avg_deviation_plain': avgDeviationPlain,
+      'avg_deviation_uphill': avgDeviationUphill,
+      'avg_deviation_downhill': avgDeviationDownhill,
+      'overall_avg_deviation': overallAvgDeviation,
+      'plain_segments': plainSegments,
+      'uphill_segments': uphillSegments,
+      'downhill_segments': downhillSegments,
+    };
+  }
+
+  factory TripSummary.fromMap(Map<String, dynamic> map) {
+    return TripSummary(
+      tripId: map['trip_id'] as String,
+      startTime: DateTime.fromMillisecondsSinceEpoch(map['start_time'] as int),
+      endTime: DateTime.fromMillisecondsSinceEpoch(map['end_time'] as int),
+      totalSegments: map['total_segments'] as int,
+      validSegments: map['valid_segments'] as int,
+      cluster0Matches: map['cluster0_matches'] as int,
+      cluster1Matches: map['cluster1_matches'] as int,
+      cluster0Percentage: (map['cluster0_percentage'] as num).toDouble(),
+      cluster1Percentage: (map['cluster1_percentage'] as num).toDouble(),
+      avgDeviationPlain: (map['avg_deviation_plain'] as num).toDouble(),
+      avgDeviationUphill: (map['avg_deviation_uphill'] as num).toDouble(),
+      avgDeviationDownhill: (map['avg_deviation_downhill'] as num).toDouble(),
+      overallAvgDeviation: (map['overall_avg_deviation'] as num).toDouble(),
+      plainSegments: map['plain_segments'] as int,
+      uphillSegments: map['uphill_segments'] as int,
+      downhillSegments: map['downhill_segments'] as int,
+    );
+  }
+}

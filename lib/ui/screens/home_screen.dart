@@ -1,0 +1,166 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/trip_provider.dart';
+import '../widgets/map_widget.dart';
+import '../widgets/big_speed_display.dart';
+import '../widgets/terrain_badge.dart';
+import '../widgets/buttons.dart';
+import '../theme/app_colors.dart';
+
+/// Home / Start Trip Screen.
+///
+/// Layout:
+///   - Top: App title + Settings icon
+///   - Main: Large Map Widget (60%+ height)
+///   - Bottom: Speed display, terrain badge, Start Trip button
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<TripProvider>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ─── Top Bar ─────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.directions_bus_rounded,
+                        color: AppColors.primary,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'KSRTC Benchmarking',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? AppColors.textOnDark
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      // Trip History
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(context).pushNamed('/history');
+                        },
+                        icon: Icon(
+                          Icons.history_rounded,
+                          color: isDark
+                              ? AppColors.textOnDarkSecondary
+                              : AppColors.textSecondary,
+                        ),
+                        tooltip: 'Trip History',
+                      ),
+                      // Settings
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(context).pushNamed('/settings');
+                        },
+                        icon: Icon(
+                          Icons.settings_rounded,
+                          color: isDark
+                              ? AppColors.textOnDarkSecondary
+                              : AppColors.textSecondary,
+                        ),
+                        tooltip: 'Settings',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // ─── Map (60%+ of screen) ────────────────────────────────
+            Expanded(
+              flex: 6,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(0),
+                  child: MapWidget(
+                    latitude: provider.currentLat,
+                    longitude: provider.currentLon,
+                    trail: provider.gpsTrail,
+                    segmentMarkers: provider.segmentMarkers,
+                  ),
+                ),
+              ),
+            ),
+
+            // ─── Bottom Section ──────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Speed + Terrain row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      BigSpeedDisplay(
+                        speedMs: provider.currentSpeed,
+                        compact: true,
+                      ),
+                      TerrainBadge(
+                        terrain: provider.currentTerrain,
+                        large: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Start Trip button
+                  PrimaryButton(
+                    label: 'Start Trip',
+                    icon: Icons.play_arrow_rounded,
+                    loading: provider.state == TripState.calibrating,
+                    onPressed: provider.state == TripState.idle
+                        ? () async {
+                            await provider.startTrip();
+                            if (context.mounted &&
+                                provider.state == TripState.recording) {
+                              Navigator.of(context)
+                                  .pushReplacementNamed('/trip');
+                            }
+                          }
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

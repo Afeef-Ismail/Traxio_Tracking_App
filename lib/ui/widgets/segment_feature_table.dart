@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../../config/constants.dart';
 
 /// Table displaying the 10 benchmark features for a segment.
 ///
@@ -113,6 +114,7 @@ class SegmentFeatureTable extends StatelessWidget {
               final bool inRange = range != null
                   ? (value >= range.$1 && value <= range.$2)
                   : true;
+              final unit = AppConstants.getFeatureUnit(key);
 
               return Padding(
                 padding: const EdgeInsets.symmetric(
@@ -135,18 +137,35 @@ class SegmentFeatureTable extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Value
+                    // Value with unit
                     Expanded(
                       flex: 2,
-                      child: Text(
-                        _formatValue(value),
+                      child: RichText(
                         textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? AppColors.textOnDark
-                              : AppColors.textPrimary,
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: _formatValue(value),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? AppColors.textOnDark
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                            if (unit.isNotEmpty)
+                              TextSpan(
+                                text: ' $unit',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w400,
+                                  color: isDark
+                                      ? AppColors.textOnDarkSecondary
+                                      : AppColors.textMuted,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),

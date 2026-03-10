@@ -33,6 +33,7 @@ class SegmentDetail {
   final double cluster0Deviation;
   final double cluster1Deviation;
   final int matchedCluster;
+  final String nearestLandmark;
 
   SegmentDetail({
     required this.segmentIndex,
@@ -41,6 +42,7 @@ class SegmentDetail {
     required this.cluster0Deviation,
     required this.cluster1Deviation,
     required this.matchedCluster,
+    this.nearestLandmark = '',
   });
 }
 
@@ -76,6 +78,14 @@ class TripProvider extends ChangeNotifier {
   int _lastMatchedCluster = -1;
   double _lastDeviation = 0.0;
   TripSummary? _lastSummary;
+
+  // ─── Current driver ID for trip attribution ────────────────────────
+  int _currentUserId = 0;
+
+  /// Set the current driver's user ID (call after login).
+  void setCurrentUserId(int userId) {
+    _currentUserId = userId;
+  }
 
   // ─── Live GPS position ─────────────────────────────────────────────
   double? _currentLat;
@@ -165,6 +175,9 @@ class TripProvider extends ChangeNotifier {
       // Initialize segmentation
       _segmentationService.startNewTrip(_tripId);
 
+      // Load benchmark features from DB (cached for the trip)
+      await _tripProcessor.loadBenchmarks();
+
       // Listen to sensor samples (same stream interface for both)
       final sampleStream = AppConstants.demoMode
           ? _demoSensorService!.sampleStream
@@ -219,7 +232,13 @@ class TripProvider extends ChangeNotifier {
       _segmentationService.endTrip();
 
       // Generate trip summary
-      _lastSummary = await _tripAnalytics.generateSummary(_tripId);
+      _lastSummary = await _tripAnalytics.generateSummary(
+        _tripId,
+        userId: _currentUserId,
+      );
+
+      // Clear benchmark cache
+      _tripProcessor.clearBenchmarkCache();
 
       _state = TripState.completed;
       notifyListeners();
@@ -341,6 +360,7 @@ class TripProvider extends ChangeNotifier {
         cluster0Deviation: score?.cluster0Deviation ?? 0.0,
         cluster1Deviation: score?.cluster1Deviation ?? 0.0,
         matchedCluster: score?.matchedCluster ?? -1,
+        nearestLandmark: seg.nearestLandmark,
       ));
     }
     return details;

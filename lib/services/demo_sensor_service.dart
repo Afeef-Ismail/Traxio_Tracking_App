@@ -28,6 +28,13 @@ class DemoSensorService {
   double _currentSpeed = 0.0;    // m/s
   double _currentYaw = 0.0;      // bearing in radians
 
+  /// Waypoint traversal speed multiplier.
+  /// The real NH-766 route is ~46 km long. At realistic bus speeds the
+  /// demo vehicle needs 30+ minutes to reach the ghat section.  A scale
+  /// factor of 15× compresses the traversal so the full plain → uphill →
+  /// downhill cycle is reached within ~90 seconds of demo recording.
+  static const double _waypointSpeedScale = 15.0;
+
   bool _isRunning = false;
 
   /// Whether the service is currently producing samples.
@@ -230,7 +237,10 @@ class DemoSensorService {
     final wpDist = _haversine(wp1[0], wp1[1], wp2[0], wp2[1]);
 
     // How much progress per tick at current speed (10 Hz → 0.1 s)
-    final progressPerTick = wpDist > 0 ? (_currentSpeed * 0.1) / wpDist : 0.1;
+    // Multiply by _waypointSpeedScale so terrain changes appear in short demos.
+    final progressPerTick = wpDist > 0
+        ? (_currentSpeed * 0.1 * _waypointSpeedScale) / wpDist
+        : 0.1;
     _segmentProgress += progressPerTick;
 
     // Advance to next waypoint segment if needed

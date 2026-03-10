@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
+import '../../analytics/score_calculator.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/terrain_badge.dart';
 import '../theme/app_colors.dart';
-import 'segment_list_screen.dart';
+import 'coaching_report_screen.dart';
 
 /// Trip History Screen — list of all completed trips.
 ///
@@ -180,7 +181,7 @@ class _TripCard extends StatelessWidget {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => SegmentListScreen(tripId: trip.tripId),
+                builder: (_) => CoachingReportScreen(tripId: trip.tripId),
               ),
             );
           },
@@ -195,6 +196,13 @@ class _TripCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
+                        _InlineScoreBadge(
+                          score: trip.score >= 0
+                              ? trip.score.round()
+                              : ScoreCalculator.computeScore(
+                                  trip.overallAvgDeviation),
+                        ),
+                        const SizedBox(width: 10),
                         Icon(
                           Icons.directions_bus_rounded,
                           size: 20,
@@ -353,6 +361,40 @@ class _TerrainChip extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w600,
           color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineScoreBadge extends StatelessWidget {
+  final int score;
+  const _InlineScoreBadge({required this.score});
+
+  Color get _color {
+    if (score >= 80) return const Color(0xFF4CAF50);
+    if (score >= 50) return const Color(0xFFFFC107);
+    return const Color(0xFFF44336);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _color.withOpacity(0.12),
+        border: Border.all(color: _color, width: 2),
+      ),
+      child: Center(
+        child: Text(
+          '$score',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: _color,
+          ),
         ),
       ),
     );

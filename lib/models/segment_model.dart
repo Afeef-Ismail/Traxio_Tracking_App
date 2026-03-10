@@ -14,6 +14,7 @@ class Segment {
   final double startAltitude;
   final double endAltitude;
   final bool isValid;
+  final String nearestLandmark;
 
   Segment({
     this.id,
@@ -30,6 +31,7 @@ class Segment {
     required this.startAltitude,
     required this.endAltitude,
     this.isValid = true,
+    this.nearestLandmark = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -48,6 +50,7 @@ class Segment {
       'start_altitude': startAltitude,
       'end_altitude': endAltitude,
       'is_valid': isValid ? 1 : 0,
+      'nearest_landmark': nearestLandmark,
     };
   }
 
@@ -67,6 +70,7 @@ class Segment {
       startAltitude: (map['start_altitude'] as num).toDouble(),
       endAltitude: (map['end_altitude'] as num).toDouble(),
       isValid: (map['is_valid'] as int) == 1,
+      nearestLandmark: (map['nearest_landmark'] as String?) ?? '',
     );
   }
 }

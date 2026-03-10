@@ -9,7 +9,9 @@ import '../analytics/feature_engine.dart';
 import '../analytics/fft_engine.dart';
 import '../analytics/deviation_engine.dart';
 import '../config/constants.dart';
+import '../config/benchmark_tables.dart';
 import '../utils/math_utils.dart';
+import '../utils/landmark_utils.dart';
 import '../database/db_helper.dart';
 
 /// Result returned after processing a segment, exposing data
@@ -48,6 +50,25 @@ class TripProcessor {
 
   /// Slope threshold — can be updated from Settings.
   double slopeThreshold = AppConstants.uphillSlopeThreshold;
+
+  /// Cached benchmark features per terrain, loaded from DB once per trip.
+  final Map<String, List<BenchmarkFeature>> _benchmarkCache = {};
+
+  /// Load and cache benchmark features for all terrains from DB.
+  Future<void> loadBenchmarks() async {
+    for (final terrain in [
+      AppConstants.terrainPlain,
+      AppConstants.terrainUphill,
+      AppConstants.terrainDownhill,
+    ]) {
+      _benchmarkCache[terrain] = await _db.getBenchmarkFeatures(terrain);
+    }
+  }
+
+  /// Clear the benchmark cache (call when trip ends or benchmarks change).
+  void clearBenchmarkCache() {
+    _benchmarkCache.clear();
+  }
 
   /// Process a completed 100m segment.
   /// Returns a [SegmentProcessResult] with terrain, cluster, and deviation.
@@ -150,6 +171,11 @@ class TripProcessor {
     }
 
     // ─── 6. Save segment to database ───────────────────────────────
+    final nearestLandmark = LandmarkUtils.getNearestLandmark(
+      segData.endLat,
+      segData.endLon,
+    );
+
     final segment = Segment(
       tripId: segData.tripId,
       segmentIndex: segData.segmentIndex,
@@ -164,6 +190,7 @@ class TripProcessor {
       startAltitude: segData.startAltitude,
       endAltitude: segData.endAltitude,
       isValid: isValid,
+      nearestLandmark: nearestLandmark,
     );
 
     final int segmentId = await _db.insertSegment(segment);
@@ -213,6 +240,7 @@ class TripProcessor {
     final devResult = DeviationEngine.computeSegmentDeviation(
       terrain: terrain,
       featureValues: allFeatures,
+      benchmarkFeatures: _benchmarkCache[terrain],
     );
 
     final score = SegmentScore(

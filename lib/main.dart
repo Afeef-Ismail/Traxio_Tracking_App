@@ -2,14 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'providers/auth_provider.dart';
 import 'providers/trip_provider.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/screens/splash_screen.dart';
+import 'ui/screens/login_screen.dart';
 import 'ui/screens/home_screen.dart';
+import 'ui/screens/admin_home_screen.dart';
 import 'ui/screens/trip_in_progress_screen.dart';
 import 'ui/screens/trip_summary_screen.dart';
 import 'ui/screens/trip_history_screen.dart';
 import 'ui/screens/settings_screen.dart';
+import 'ui/screens/driver_profile_screen.dart';
+import 'ui/widgets/admin_guard.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,8 +68,11 @@ class _KsrtcAppState extends State<KsrtcApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => TripProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => TripProvider()),
+      ],
       child: MaterialApp(
         title: 'KSRTC Benchmarking',
         debugShowCheckedModeBanner: false,
@@ -74,10 +82,13 @@ class _KsrtcAppState extends State<KsrtcApp> {
         initialRoute: '/',
         routes: {
           '/': (_) => const SplashScreen(),
+          '/login': (_) => const LoginScreen(),
           '/home': (_) => const HomeScreen(),
+          '/admin': (_) => const AdminGuard(child: AdminHomeScreen()),
           '/trip': (_) => const TripInProgressScreen(),
           '/summary': (_) => const TripSummaryScreen(),
           '/history': (_) => const TripHistoryScreen(),
+          '/profile': (_) => const DriverProfileScreen(),
           '/settings': (_) => SettingsScreen(
                 onDarkModeChanged: _setDarkMode,
               ),

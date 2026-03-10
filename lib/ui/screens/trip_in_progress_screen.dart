@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../widgets/map_widget.dart';
 import '../widgets/big_speed_display.dart';
@@ -27,6 +28,7 @@ class TripInProgressScreen extends StatefulWidget {
 
 class _TripInProgressScreenState extends State<TripInProgressScreen> {
   Timer? _elapsedTimer;
+  Timer? _sessionTimer;
   DateTime? _tripStartTime;
   Duration _elapsed = Duration.zero;
 
@@ -41,11 +43,18 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
         });
       }
     });
+    // Update activity every minute during trip (keeps session alive)
+    _sessionTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      context.read<AuthProvider>().updateActivity();
+    });
+    // Mark activity at trip start
+    context.read<AuthProvider>().updateActivity();
   }
 
   @override
   void dispose() {
     _elapsedTimer?.cancel();
+    _sessionTimer?.cancel();
     super.dispose();
   }
 

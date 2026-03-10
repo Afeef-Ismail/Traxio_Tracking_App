@@ -89,6 +89,20 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
   }
 
   Widget _buildSegmentList(bool isDark) {
+    // Find worst segment index (highest matched deviation)
+    int worstIndex = 0;
+    double worstDev = -1;
+    for (int i = 0; i < _segments.length; i++) {
+      final seg = _segments[i];
+      final dev = seg.matchedCluster == 0
+          ? seg.cluster0Deviation
+          : seg.cluster1Deviation;
+      if (dev > worstDev) {
+        worstDev = dev;
+        worstIndex = i;
+      }
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _segments.length,
@@ -97,14 +111,22 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
         final matchedDev = seg.matchedCluster == 0
             ? seg.cluster0Deviation
             : seg.cluster1Deviation;
+        final isWorst = index == worstIndex && _segments.length > 1;
 
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkCard : AppColors.lightCard,
+            color: isWorst
+                ? AppColors.alert.withOpacity(isDark ? 0.12 : 0.06)
+                : (isDark ? AppColors.darkCard : AppColors.lightCard),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+              color: isWorst
+                  ? AppColors.alert.withOpacity(0.6)
+                  : (isDark
+                      ? AppColors.dividerDark
+                      : AppColors.dividerLight),
+              width: isWorst ? 2 : 1,
             ),
           ),
           child: Material(
@@ -121,6 +143,7 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
                       cluster1Deviation: seg.cluster1Deviation,
                       matchedCluster: seg.matchedCluster,
                       segmentIndex: seg.segmentIndex,
+                      nearestLandmark: seg.nearestLandmark,
                     ),
                   ),
                 );
@@ -159,6 +182,26 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
                             children: [
                               TerrainBadge(terrain: seg.terrain),
                               const SizedBox(width: 8),
+                              if (isWorst) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.alert,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'WORST',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
                               Text(
                                 'Cluster ${seg.matchedCluster}',
                                 style: TextStyle(

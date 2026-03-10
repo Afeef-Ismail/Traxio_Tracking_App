@@ -4,6 +4,7 @@ import '../widgets/terrain_badge.dart';
 import '../widgets/summary_card.dart';
 import '../theme/app_colors.dart';
 import '../../config/benchmark_tables.dart';
+import '../../database/db_helper.dart';
 
 /// Segment Detail Screen — triggered after trip to inspect individual segments.
 ///
@@ -13,7 +14,7 @@ import '../../config/benchmark_tables.dart';
 ///   - Cluster matched
 ///   - Deviation score
 ///   - Optional simple bar chart
-class SegmentDetailScreen extends StatelessWidget {
+class SegmentDetailScreen extends StatefulWidget {
   /// The terrain type for this segment.
   final String terrain;
 
@@ -32,6 +33,9 @@ class SegmentDetailScreen extends StatelessWidget {
   /// Segment index for display.
   final int segmentIndex;
 
+  /// Nearest landmark name.
+  final String nearestLandmark;
+
   const SegmentDetailScreen({
     super.key,
     required this.terrain,
@@ -40,34 +44,67 @@ class SegmentDetailScreen extends StatelessWidget {
     required this.cluster1Deviation,
     required this.matchedCluster,
     required this.segmentIndex,
+    this.nearestLandmark = '',
   });
 
   @override
+  State<SegmentDetailScreen> createState() => _SegmentDetailScreenState();
+}
+
+class _SegmentDetailScreenState extends State<SegmentDetailScreen> {
+  List<BenchmarkFeature>? _benchmarkFeatures;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBenchmarks();
+  }
+
+  Future<void> _loadBenchmarks() async {
+    final features = await DbHelper().getBenchmarkFeatures(widget.terrain);
+    if (mounted) {
+      setState(() {
+        _benchmarkFeatures = features;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Segment ${widget.segmentIndex}')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final matchedDev =
-        matchedCluster == 0 ? cluster0Deviation : cluster1Deviation;
+    final matchedDev = widget.matchedCluster == 0
+        ? widget.cluster0Deviation
+        : widget.cluster1Deviation;
 
     // Build benchmark ranges for matched cluster
-    final benchmarkFeatures =
-        BenchmarkTables.getFeaturesForTerrain(terrain);
+    final benchmarkFeatures = _benchmarkFeatures!;
     final Map<String, (double, double)> ranges = {};
     for (final bf in benchmarkFeatures) {
-      final range = matchedCluster == 0 ? bf.cluster0 : bf.cluster1;
+      final range =
+          widget.matchedCluster == 0 ? bf.cluster0 : bf.cluster1;
       ranges[bf.featureKey] = (range.min, range.max);
     }
 
     // Filter features to only show the 10 benchmark features
     final displayFeatures = <String, double>{};
     for (final bf in benchmarkFeatures) {
-      if (features.containsKey(bf.featureKey)) {
-        displayFeatures[bf.featureKey] = features[bf.featureKey]!;
+      if (widget.features.containsKey(bf.featureKey)) {
+        displayFeatures[bf.featureKey] = widget.features[bf.featureKey]!;
       }
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Segment $segmentIndex'),
+        title: Text('Segment ${widget.segmentIndex}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
@@ -83,7 +120,7 @@ class SegmentDetailScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TerrainBadge(terrain: terrain, large: true),
+                  TerrainBadge(terrain: widget.terrain, large: true),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -99,7 +136,7 @@ class SegmentDetailScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         Text(
-                          'Cluster $matchedCluster',
+                          'Cluster ${widget.matchedCluster}',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -111,6 +148,26 @@ class SegmentDetailScreen extends StatelessWidget {
                   ),
                 ],
               ),
+              if (widget.nearestLandmark.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.location_on_outlined,
+                        size: 16, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.nearestLandmark,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        color: isDark
+                            ? AppColors.textOnDarkSecondary
+                            : AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
 
               // ─── Deviation Scores ──────────────────────────────────
@@ -120,7 +177,7 @@ class SegmentDetailScreen extends StatelessWidget {
                     child: SummaryCard(
                       title: 'Matched Deviation',
                       value: matchedDev.toStringAsFixed(2),
-                      subtitle: 'Cluster $matchedCluster',
+                      subtitle: 'Cluster ${widget.matchedCluster}',
                       accentColor: matchedDev < 5.0
                           ? AppColors.success
                           : (matchedDev < 15.0
@@ -137,8 +194,8 @@ class SegmentDetailScreen extends StatelessWidget {
                   Expanded(
                     child: _DeviationCompareCard(
                       label: 'Cluster 0',
-                      value: cluster0Deviation,
-                      isMatched: matchedCluster == 0,
+                      value: widget.cluster0Deviation,
+                      isMatched: widget.matchedCluster == 0,
                       isDark: isDark,
                     ),
                   ),
@@ -146,8 +203,8 @@ class SegmentDetailScreen extends StatelessWidget {
                   Expanded(
                     child: _DeviationCompareCard(
                       label: 'Cluster 1',
-                      value: cluster1Deviation,
-                      isMatched: matchedCluster == 1,
+                      value: widget.cluster1Deviation,
+                      isMatched: widget.matchedCluster == 1,
                       isDark: isDark,
                     ),
                   ),
@@ -168,7 +225,7 @@ class SegmentDetailScreen extends StatelessWidget {
               SegmentFeatureTable(
                 features: displayFeatures,
                 benchmarkRanges: ranges,
-                matchedCluster: matchedCluster,
+                matchedCluster: widget.matchedCluster,
               ),
               const SizedBox(height: 24),
 
@@ -184,12 +241,12 @@ class SegmentDetailScreen extends StatelessWidget {
               const SizedBox(height: 12),
               _DeviationBar(
                 label: 'Cluster 0',
-                value: cluster0Deviation,
-                maxValue: (cluster0Deviation > cluster1Deviation
-                        ? cluster0Deviation
-                        : cluster1Deviation) *
+                value: widget.cluster0Deviation,
+                maxValue: (widget.cluster0Deviation > widget.cluster1Deviation
+                        ? widget.cluster0Deviation
+                        : widget.cluster1Deviation) *
                     1.2,
-                color: matchedCluster == 0
+                color: widget.matchedCluster == 0
                     ? AppColors.success
                     : AppColors.textMuted,
                 isDark: isDark,
@@ -197,12 +254,12 @@ class SegmentDetailScreen extends StatelessWidget {
               const SizedBox(height: 8),
               _DeviationBar(
                 label: 'Cluster 1',
-                value: cluster1Deviation,
-                maxValue: (cluster0Deviation > cluster1Deviation
-                        ? cluster0Deviation
-                        : cluster1Deviation) *
+                value: widget.cluster1Deviation,
+                maxValue: (widget.cluster0Deviation > widget.cluster1Deviation
+                        ? widget.cluster0Deviation
+                        : widget.cluster1Deviation) *
                     1.2,
-                color: matchedCluster == 1
+                color: widget.matchedCluster == 1
                     ? AppColors.success
                     : AppColors.textMuted,
                 isDark: isDark,

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
+import '../../analytics/coaching_engine.dart';
+import '../../analytics/score_calculator.dart';
+import '../../services/gemini_coaching_service.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/terrain_badge.dart';
 import '../widgets/buttons.dart';
@@ -16,8 +19,60 @@ import 'segment_list_screen.dart';
 ///   - Cluster match percentages
 ///   - Average deviation per terrain
 ///   - Terrain distribution summary cards
-class TripSummaryScreen extends StatelessWidget {
+///   - AI coaching report
+class TripSummaryScreen extends StatefulWidget {
   const TripSummaryScreen({super.key});
+
+  @override
+  State<TripSummaryScreen> createState() => _TripSummaryScreenState();
+}
+
+class _TripSummaryScreenState extends State<TripSummaryScreen> {
+  List<CoachingInsight> _insights = [];
+  bool _coachingLoaded = false;
+  String? _aiReport;
+  bool _aiLoading = false;
+  int _tripScore = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCoaching();
+  }
+
+  Future<void> _loadCoaching() async {
+    final provider = context.read<TripProvider>();
+    final summary = provider.lastSummary;
+    if (summary == null) return;
+
+    // Compute score
+    _tripScore = ScoreCalculator.computeScore(summary.overallAvgDeviation);
+
+    final segments =
+        await provider.getSegmentDetailsForTrip(summary.tripId);
+    final insights = CoachingEngine.analyze(summary, segments);
+
+    if (mounted) {
+      setState(() {
+        _insights = insights;
+        _coachingLoaded = true;
+        _aiLoading = true;
+      });
+    }
+
+    // Fetch AI report (cached or new)
+    final report = await GeminiCoachingService.getCoachingReport(
+      summary,
+      segments,
+    );
+
+    if (mounted) {
+      setState(() {
+        _aiReport = report;
+        _aiLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +126,14 @@ class TripSummaryScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // ─── Score Badge ─────────────────────────────────
+                    if (_tripScore >= 0) ...[
+                      Center(
+                        child: _ScoreBadge(score: _tripScore, isDark: isDark),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
                     // ─── Map Overview ────────────────────────────────
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
@@ -216,6 +279,65 @@ class TripSummaryScreen extends StatelessWidget {
                       '${summary.validSegments}',
                       isDark: isDark,
                     ),
+                    const SizedBox(height: 24),
+
+                    // ─── AI Coaching Report ──────────────────────────
+                    _SectionTitle('AI Coach', isDark: isDark),
+                    const SizedBox(height: 10),
+                    if (_aiLoading)
+                      _ShimmerCard(isDark: isDark)
+                    else if (_aiReport != null)
+                      _AiCoachCard(report: _aiReport!, isDark: isDark)
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark
+                                ? AppColors.dividerDark
+                                : AppColors.dividerLight,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.cloud_off_rounded,
+                                size: 20,
+                                color: isDark
+                                    ? AppColors.textOnDarkSecondary
+                                    : AppColors.textMuted),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'AI coaching unavailable. Check your connection.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? AppColors.textOnDarkSecondary
+                                      : AppColors.textMuted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+
+                    // ─── Rule-Based Coaching Cards ───────────────────
+                    _SectionTitle('Coaching Report', isDark: isDark),
+                    const SizedBox(height: 10),
+                    if (!_coachingLoaded)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2)),
+                      )
+                    else
+                      ..._insights.map((insight) =>
+                          _CoachingCard(insight: insight, isDark: isDark)),
                     const SizedBox(height: 24),
 
                     // ─── Action Buttons ──────────────────────────────
@@ -556,4 +678,366 @@ class _InfoRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CoachingCard extends StatelessWidget {
+  final CoachingInsight insight;
+  final bool isDark;
+
+  const _CoachingCard({required this.insight, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = _severityColor(insight.severity);
+    final icon = _insightIcon(insight.icon);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: accentColor.withOpacity(0.35),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: accentColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  insight.title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark
+                        ? AppColors.textOnDark
+                        : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  insight.message,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: isDark
+                        ? AppColors.textOnDarkSecondary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _severityColor(Severity severity) {
+    switch (severity) {
+      case Severity.positive:
+        return AppColors.success;
+      case Severity.neutral:
+        return AppColors.primary;
+      case Severity.warning:
+        return AppColors.warning;
+      case Severity.critical:
+        return AppColors.alert;
+    }
+  }
+
+  IconData _insightIcon(InsightIcon icon) {
+    switch (icon) {
+      case InsightIcon.trophy:
+        return Icons.emoji_events_rounded;
+      case InsightIcon.thumbsUp:
+        return Icons.thumb_up_alt_rounded;
+      case InsightIcon.warning:
+        return Icons.warning_rounded;
+      case InsightIcon.alert:
+        return Icons.error_rounded;
+      case InsightIcon.terrain:
+        return Icons.terrain_rounded;
+      case InsightIcon.focus:
+        return Icons.center_focus_strong_rounded;
+      case InsightIcon.info:
+        return Icons.info_rounded;
+    }
+  }
+}
+
+// ─── Score Badge ──────────────────────────────────────────────────────
+
+class _ScoreBadge extends StatelessWidget {
+  final int score;
+  final bool isDark;
+
+  const _ScoreBadge({required this.score, required this.isDark});
+
+  Color get _color {
+    if (score >= 80) return const Color(0xFF4CAF50);
+    if (score >= 50) return const Color(0xFFFFC107);
+    return const Color(0xFFF44336);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _color.withOpacity(0.12),
+        border: Border.all(color: _color, width: 4),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$score',
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              color: _color,
+              height: 1,
+            ),
+          ),
+          Text(
+            'SCORE',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+              color: _color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Shimmer Loading Placeholder ─────────────────────────────────────
+
+class _ShimmerCard extends StatefulWidget {
+  final bool isDark;
+  const _ShimmerCard({required this.isDark});
+
+  @override
+  State<_ShimmerCard> createState() => _ShimmerCardState();
+}
+
+class _ShimmerCardState extends State<_ShimmerCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, __) {
+        final opacity = 0.3 + 0.4 * (0.5 + 0.5 * (_controller.value * 2 - 1).abs());
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: widget.isDark ? AppColors.darkCard : AppColors.lightCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: widget.isDark
+                  ? AppColors.dividerDark
+                  : AppColors.dividerLight,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome_rounded,
+                      size: 18, color: AppColors.primary.withOpacity(opacity)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Generating AI coaching...',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary.withOpacity(opacity),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _shimmerLine(0.9, opacity),
+              const SizedBox(height: 8),
+              _shimmerLine(0.7, opacity),
+              const SizedBox(height: 8),
+              _shimmerLine(0.5, opacity),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _shimmerLine(double widthFraction, double opacity) {
+    return FractionallySizedBox(
+      widthFactor: widthFraction,
+      child: Container(
+        height: 12,
+        decoration: BoxDecoration(
+          color: (widget.isDark ? Colors.white : Colors.black)
+              .withOpacity(opacity * 0.15),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── AI Coach Card ───────────────────────────────────────────────────
+
+class _AiCoachCard extends StatelessWidget {
+  final String report;
+  final bool isDark;
+
+  const _AiCoachCard({required this.report, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    // Parse the three sections from the report
+    final sections = _parseSections(report);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Text(
+                'AI Coach',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (final section in sections) ...[
+            if (section.title.isNotEmpty) ...[
+              Text(
+                section.title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
+            Text(
+              section.body,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: isDark
+                    ? AppColors.textOnDarkSecondary
+                    : AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<_ReportSection> _parseSections(String text) {
+    final sections = <_ReportSection>[];
+    final lines = text.split('\n');
+    String currentTitle = '';
+    final buffer = StringBuffer();
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      if (trimmed.startsWith('SUMMARY:') ||
+          trimmed.startsWith('STRENGTHS:') ||
+          trimmed.startsWith('IMPROVEMENTS:')) {
+        // Flush previous section
+        if (currentTitle.isNotEmpty || buffer.isNotEmpty) {
+          sections.add(_ReportSection(currentTitle, buffer.toString().trim()));
+          buffer.clear();
+        }
+        final colonIdx = trimmed.indexOf(':');
+        currentTitle = trimmed.substring(0, colonIdx);
+        final rest = trimmed.substring(colonIdx + 1).trim();
+        if (rest.isNotEmpty) buffer.writeln(rest);
+      } else {
+        buffer.writeln(trimmed);
+      }
+    }
+
+    if (currentTitle.isNotEmpty || buffer.isNotEmpty) {
+      sections.add(_ReportSection(currentTitle, buffer.toString().trim()));
+    }
+
+    // If parsing failed, just show the whole report
+    if (sections.isEmpty) {
+      sections.add(_ReportSection('', text));
+    }
+
+    return sections;
+  }
+}
+
+class _ReportSection {
+  final String title;
+  final String body;
+  const _ReportSection(this.title, this.body);
 }

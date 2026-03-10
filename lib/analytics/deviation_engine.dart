@@ -30,20 +30,23 @@ class DeviationEngine {
   ///
   /// [terrain] - "Plain", "Uphill", or "Downhill"
   /// [featureValues] - Map of "Attribute_FeatureName" → computed value
+  /// [benchmarkFeatures] - Optional custom benchmark features (from DB).
+  ///   If null, falls back to hardcoded BenchmarkTables.
   ///
   /// Returns a [SegmentScore] with cluster0/cluster1 deviations and match.
   static DeviationResult computeSegmentDeviation({
     required String terrain,
     required Map<String, double> featureValues,
+    List<BenchmarkFeature>? benchmarkFeatures,
   }) {
-    final benchmarkFeatures =
+    final features = benchmarkFeatures ??
         BenchmarkTables.getFeaturesForTerrain(terrain);
 
     double cluster0Total = 0.0;
     double cluster1Total = 0.0;
     final List<FeatureDeviation> details = [];
 
-    for (final bf in benchmarkFeatures) {
+    for (final bf in features) {
       final double? value = featureValues[bf.featureKey];
       if (value == null) continue;
 

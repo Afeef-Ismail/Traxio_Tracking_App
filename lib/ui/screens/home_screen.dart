@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../widgets/map_widget.dart';
 import '../widgets/big_speed_display.dart';
@@ -13,8 +15,37 @@ import '../theme/app_colors.dart';
 ///   - Top: App title + Settings icon
 ///   - Main: Large Map Widget (60%+ height)
 ///   - Bottom: Speed display, terrain badge, Start Trip button
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  Timer? _sessionTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Check session timeout every 5 minutes
+    _sessionTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      final auth = context.read<AuthProvider>();
+      if (auth.checkSessionTimeout() && mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sessionTimer?.cancel();
+    super.dispose();
+  }
+
+  void _updateActivity() {
+    context.read<AuthProvider>().updateActivity();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +85,19 @@ class HomeScreen extends StatelessWidget {
                   ),
                   Row(
                     children: [
+                      // Driver Profile
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(context).pushNamed('/profile');
+                        },
+                        icon: Icon(
+                          Icons.person_rounded,
+                          color: isDark
+                              ? AppColors.textOnDarkSecondary
+                              : AppColors.textSecondary,
+                        ),
+                        tooltip: 'Profile',
+                      ),
                       // Trip History
                       IconButton(
                         onPressed: () {
@@ -146,6 +190,7 @@ class HomeScreen extends StatelessWidget {
                     loading: provider.state == TripState.calibrating,
                     onPressed: provider.state == TripState.idle
                         ? () async {
+                            _updateActivity();
                             await provider.startTrip();
                             if (context.mounted &&
                                 provider.state == TripState.recording) {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../providers/auth_provider.dart';
 import '../widgets/buttons.dart';
 import '../theme/app_colors.dart';
 
@@ -259,7 +261,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
               loading: _saving,
               onPressed: _saveSettings,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
+
+            // ─── Logout ──────────────────────────────────────────────
+            _SettingSection(
+              title: 'Account',
+              isDark: isDark,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sign out of the current session.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? AppColors.textOnDarkSecondary
+                          : AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        context.read<AuthProvider>().logout();
+                        Navigator.of(context)
+                            .pushNamedAndRemoveUntil('/login', (_) => false);
+                      },
+                      icon: const Icon(Icons.logout_rounded, size: 20),
+                      label: const Text('Logout'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.alert,
+                        side: BorderSide(
+                          color: AppColors.alert.withOpacity(0.5),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
 
             // ─── App Info ────────────────────────────────────────────
             Center(

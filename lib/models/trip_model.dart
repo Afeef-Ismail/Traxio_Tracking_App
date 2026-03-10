@@ -53,6 +53,13 @@ class TripSummary {
   final int plainSegments;
   final int uphillSegments;
   final int downhillSegments;
+  final int userId;
+  final String coachingReport;
+  final double score;
+
+  /// Populated from JOIN when reading; not stored in trip_summaries table.
+  final String driverName;
+  final String busNumber;
 
   TripSummary({
     required this.tripId,
@@ -71,6 +78,11 @@ class TripSummary {
     required this.plainSegments,
     required this.uphillSegments,
     required this.downhillSegments,
+    this.userId = 0,
+    this.coachingReport = '',
+    this.score = -1,
+    this.driverName = '',
+    this.busNumber = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -91,6 +103,9 @@ class TripSummary {
       'plain_segments': plainSegments,
       'uphill_segments': uphillSegments,
       'downhill_segments': downhillSegments,
+      'user_id': userId,
+      'coaching_report': coachingReport,
+      'score': score,
     };
   }
 
@@ -112,6 +127,11 @@ class TripSummary {
       plainSegments: map['plain_segments'] as int,
       uphillSegments: map['uphill_segments'] as int,
       downhillSegments: map['downhill_segments'] as int,
+      userId: (map['user_id'] as int?) ?? 0,
+      coachingReport: (map['coaching_report'] as String?) ?? '',
+      score: (map['score'] as num?)?.toDouble() ?? -1,
+      driverName: (map['driver_name'] as String?) ?? '',
+      busNumber: (map['bus_number'] as String?) ?? '',
     );
   }
 }

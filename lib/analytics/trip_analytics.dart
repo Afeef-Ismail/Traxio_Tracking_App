@@ -2,6 +2,7 @@ import '../models/segment_model.dart';
 import '../models/trip_model.dart';
 import '../config/constants.dart';
 import '../database/db_helper.dart';
+import 'score_calculator.dart';
 
 /// Computes trip-level aggregated analytics from segment scores.
 ///
@@ -14,7 +15,7 @@ class TripAnalytics {
   final DbHelper _db = DbHelper();
 
   /// Generate and save a complete trip summary.
-  Future<TripSummary> generateSummary(String tripId) async {
+  Future<TripSummary> generateSummary(String tripId, {int userId = 0}) async {
     final segments = await _db.getSegmentsForTrip(tripId);
     final scores = await _db.getScoresForTrip(tripId);
 
@@ -97,9 +98,14 @@ class TripAnalytics {
       plainSegments: plainSegs.length,
       uphillSegments: uphillSegs.length,
       downhillSegments: downhillSegs.length,
+      userId: userId,
     );
 
     await _db.saveTripSummary(summary);
+
+    // Compute and persist trip score (0–100)
+    final int tripScore = ScoreCalculator.computeScore(overallAvgDev);
+    await _db.updateTripScore(tripId, tripScore.toDouble());
 
     return summary;
   }

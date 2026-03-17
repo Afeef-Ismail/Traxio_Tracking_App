@@ -10,6 +10,7 @@ import '../../utils/landmark_utils.dart';
 import '../theme/app_colors.dart';
 import '../widgets/big_speed_display.dart';
 import '../widgets/buttons.dart';
+import '../widgets/map_widget.dart';
 import '../widgets/terrain_badge.dart';
 
 class DataCollectionScreen extends StatefulWidget {
@@ -302,60 +303,83 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              BigSpeedDisplay(speedMs: provider.currentSpeed, compact: false),
-              TerrainBadge(terrain: provider.currentTerrain, large: true),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkCard : AppColors.lightCard,
+          const SizedBox(height: 12),
+          Expanded(
+            flex: 5,
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+              child: MapWidget(
+                latitude: provider.currentLat,
+                longitude: provider.currentLon,
+                trail: provider.gpsTrail,
+                segmentMarkers: provider.segmentMarkers,
+                zoom: 16.0,
               ),
             ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            flex: 5,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Nearest Landmark',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? AppColors.textOnDarkSecondary : AppColors.textMuted,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    BigSpeedDisplay(speedMs: provider.currentSpeed, compact: false),
+                    TerrainBadge(terrain: provider.currentTerrain, large: true),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Nearest Landmark',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? AppColors.textOnDarkSecondary : AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        nearest,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Segments: ${provider.segmentsCompleted}',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  nearest,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Segments: ${provider.segmentsCompleted}',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
-                  ),
+                const Spacer(),
+                PrimaryButton(
+                  label: 'Stop Collection',
+                  icon: Icons.stop_rounded,
+                  color: AppColors.alert,
+                  onPressed:
+                      provider.state == TripState.recording ? _stopCollection : null,
                 ),
               ],
             ),
-          ),
-          const Spacer(),
-          PrimaryButton(
-            label: 'Stop Collection',
-            icon: Icons.stop_rounded,
-            color: AppColors.alert,
-            onPressed: provider.state == TripState.recording ? _stopCollection : null,
           ),
         ],
       ),

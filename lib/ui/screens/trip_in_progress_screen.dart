@@ -9,6 +9,7 @@ import '../widgets/terrain_badge.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/buttons.dart';
 import '../theme/app_colors.dart';
+import 'trip_summary_screen.dart';
 
 /// Trip In Progress Screen — THE most important screen.
 ///
@@ -31,6 +32,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
   Timer? _sessionTimer;
   DateTime? _tripStartTime;
   Duration _elapsed = Duration.zero;
+  bool _navigatedToSummary = false;
 
   @override
   void initState() {
@@ -74,9 +76,16 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
     final distanceKm = provider.currentDistance / 1000.0;
 
     // Handle trip completion — navigate to summary
-    if (provider.state == TripState.completed) {
+    if (provider.state == TripState.completed && !_navigatedToSummary) {
+      _navigatedToSummary = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).pushReplacementNamed('/summary');
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const TripSummaryScreen(),
+          ),
+          (route) => route.settings.name == '/home' || route.isFirst,
+        );
       });
     }
 

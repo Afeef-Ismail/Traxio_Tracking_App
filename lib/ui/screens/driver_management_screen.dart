@@ -143,6 +143,7 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
 
                     // Check if username already exists
                     final existing = await _db.getUserByUsername(username);
+                    if (!ctx.mounted) return;
                     if (existing != null) {
                       setDialogState(() {
                         errorText = 'Username already exists';
@@ -153,7 +154,9 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
                     final hash = DbHelper.hashPassword(password);
                     await _db.createUser(username, hash, 'driver',
                         busNumber: busNumberController.text.trim());
-                    if (ctx.mounted) Navigator.of(ctx).pop();
+                    if (!ctx.mounted) return;
+                    Navigator.of(ctx).pop();
+                    if (!mounted) return;
                     _loadDrivers();
                   },
                   style: ElevatedButton.styleFrom(
@@ -199,6 +202,7 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
 
     if (confirmed == true) {
       await _db.deleteUser(driver['id'] as int);
+      if (!mounted) return;
       _loadDrivers();
     }
   }
@@ -284,7 +288,9 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
                       driver['id'] as int,
                       controller.text.trim(),
                     );
-                    if (ctx.mounted) Navigator.of(ctx).pop();
+                    if (!ctx.mounted) return;
+                    Navigator.of(ctx).pop();
+                    if (!mounted) return;
                     _loadDrivers();
                   },
                   style: ElevatedButton.styleFrom(

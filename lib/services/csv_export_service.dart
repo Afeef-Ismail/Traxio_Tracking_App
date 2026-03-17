@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../database/db_helper.dart';
 import '../config/constants.dart';
 
@@ -78,6 +79,11 @@ class CsvExportService {
     required List<Map<String, dynamic>> rows,
     required bool includeDriverColumns,
   }) async {
+    final permissionStatus = await Permission.storage.request();
+    if (!permissionStatus.isGranted) {
+      throw Exception('Storage permission denied: $permissionStatus');
+    }
+
     final headers = <String>[
       if (includeDriverColumns) ...['driver_username', 'bus_number'],
       'trip_id',
@@ -108,12 +114,15 @@ class CsvExportService {
     }
 
     final downloadsDir = await _resolveDownloadsDirectory();
-    if (!await downloadsDir.exists()) {
-      await downloadsDir.create(recursive: true);
+    if (!downloadsDir.existsSync()) {
+      downloadsDir.createSync(recursive: true);
     }
 
     final file = File(p.join(downloadsDir.path, fileName));
     await file.writeAsString(buffer.toString());
+    if (!file.existsSync()) {
+      throw Exception('CSV write failed: file not found at ${file.path}');
+    }
     return file.path;
   }
 
@@ -144,6 +153,11 @@ class CsvExportService {
   }
 
   Future<Directory> _resolveDownloadsDirectory() async {
+    final publicDownloads = Directory('/storage/emulated/0/Download');
+    if (publicDownloads.existsSync()) return publicDownloads;
+    publicDownloads.createSync(recursive: true);
+    if (publicDownloads.existsSync()) return publicDownloads;
+
     final downloads = await getDownloadsDirectory();
     if (downloads != null) return downloads;
 

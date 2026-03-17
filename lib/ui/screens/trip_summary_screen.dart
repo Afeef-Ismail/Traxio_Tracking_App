@@ -11,6 +11,7 @@ import '../widgets/buttons.dart';
 import '../widgets/map_widget.dart';
 import '../theme/app_colors.dart';
 import 'segment_list_screen.dart';
+import 'trip_history_screen.dart';
 
 /// Trip Summary Screen — shown after trip completion.
 ///
@@ -370,8 +371,13 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                       icon: Icons.history_rounded,
                       onPressed: () {
                         provider.reset();
-                        Navigator.of(context)
-                            .pushReplacementNamed('/history');
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TripHistoryScreen(),
+                          ),
+                          (route) => route.settings.name == '/home' || route.isFirst,
+                        );
                       },
                     ),
                   ],

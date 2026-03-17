@@ -79,12 +79,10 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
     if (provider.state == TripState.completed && !_navigatedToSummary) {
       _navigatedToSummary = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.pushAndRemoveUntil(
-          context,
+        Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => const TripSummaryScreen(),
           ),
-          (route) => route.settings.name == '/home' || route.isFirst,
         );
       });
     }

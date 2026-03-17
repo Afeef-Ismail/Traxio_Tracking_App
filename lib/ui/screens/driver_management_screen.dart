@@ -3,6 +3,16 @@ import '../../config/constants.dart';
 import '../../database/db_helper.dart';
 import '../theme/app_colors.dart';
 
+String? _validateBusNumber(String value) {
+  if (value.isEmpty) return null;
+  final normalized = value.replaceAll(' ', '-').toUpperCase();
+  final pattern = RegExp(r'^KL-\d{2}-[A-Z0-9-]+$');
+  if (!pattern.hasMatch(normalized)) {
+    return 'Expected format: KL-DD-XXXX (e.g. KL-11-A-1234)';
+  }
+  return null;
+}
+
 /// Driver Management Screen — admin CRUD for driver accounts.
 ///
 /// List all drivers, add new driver, delete driver.
@@ -36,145 +46,13 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
   }
 
   Future<void> _showAddDriverDialog() async {
-    final usernameController = TextEditingController();
-    final passwordController = TextEditingController();
-    final busNumberController = TextEditingController();
-    String? errorText;
-    String? busWarning;
-    bool obscure = true;
-
-    await showDialog(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              title: const Text('Add New Driver'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: usernameController,
-                      textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
-                        labelText: 'Username',
-                        prefixIcon:
-                            const Icon(Icons.person_outline, size: 20),
-                        errorText: errorText,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: obscure,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon:
-                            const Icon(Icons.lock_outline, size: 20),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            obscure
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            size: 20,
-                          ),
-                          onPressed: () {
-                            setDialogState(() => obscure = !obscure);
-                          },
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: busNumberController,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: InputDecoration(
-                        labelText: 'Bus Number (optional)',
-                        hintText: 'e.g. KL-11-A-1234',
-                        prefixIcon:
-                            const Icon(Icons.directions_bus_outlined, size: 20),
-                        helperText: busWarning,
-                        helperStyle: const TextStyle(
-                            color: Colors.orange, fontSize: 11),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onChanged: (v) {
-                        final warn = _validateBusNumber(v);
-                        if (warn != busWarning) {
-                          setDialogState(() => busWarning = warn);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final username = usernameController.text.trim();
-                    final password = passwordController.text;
-
-                    if (username.isEmpty || password.isEmpty) {
-                      setDialogState(() {
-                        errorText = 'Username and password required';
-                      });
-                      return;
-                    }
-
-                    if (password.length < 4) {
-                      setDialogState(() {
-                        errorText = 'Password must be at least 4 characters';
-                      });
-                      return;
-                    }
-
-                    // Check if username already exists
-                    final existing = await _db.getUserByUsername(username);
-                    if (!ctx.mounted) return;
-                    if (existing != null) {
-                      setDialogState(() {
-                        errorText = 'Username already exists';
-                      });
-                      return;
-                    }
-
-                    final hash = DbHelper.hashPassword(password);
-                    await _db.createUser(username, hash, 'driver',
-                        busNumber: busNumberController.text.trim());
-                    if (!ctx.mounted) return;
-                    Navigator.of(ctx).pop();
-                    if (!mounted) return;
-                    _loadDrivers();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Add'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => const _AddDriverDialog(),
     );
-
-    usernameController.dispose();
-    passwordController.dispose();
-    busNumberController.dispose();
+    if (result == true && mounted) {
+      _loadDrivers();
+    }
   }
 
   Future<void> _confirmDeleteDriver(Map<String, dynamic> driver) async {
@@ -228,85 +106,18 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
     }
   }
 
-  /// Soft-validate Kerala bus number format.
-  /// Returns a warning message or null if looks valid.
-  static String? _validateBusNumber(String value) {
-    if (value.isEmpty) return null;
-    // Accept KL-DD-XXXX, KL DD XXXX, or similar Kerala plates
-    final normalized = value.replaceAll(' ', '-').toUpperCase();
-    final pattern = RegExp(r'^KL-\d{2}-[A-Z0-9-]+$');
-    if (!pattern.hasMatch(normalized)) {
-      return 'Expected format: KL-DD-XXXX (e.g. KL-11-A-1234)';
-    }
-    return null;
-  }
-
   Future<void> _showEditBusNumberDialog(Map<String, dynamic> driver) async {
-    final controller = TextEditingController(
-      text: driver['bus_number'] as String? ?? '',
-    );
-    String? busWarning;
-
-    await showDialog(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              title: Text('Edit Bus Number — ${driver['username']}'),
-              content: TextField(
-                controller: controller,
-                textCapitalization: TextCapitalization.characters,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Bus Number',
-                  hintText: 'e.g. KL-11-A-1234',
-                  prefixIcon:
-                      const Icon(Icons.directions_bus_outlined, size: 20),
-                  helperText: busWarning,
-                  helperStyle:
-                      const TextStyle(color: Colors.orange, fontSize: 11),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                onChanged: (v) {
-                  final warn = _validateBusNumber(v);
-                  if (warn != busWarning) {
-                    setDialogState(() => busWarning = warn);
-                  }
-                },
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    await _db.updateBusNumber(
-                      driver['id'] as int,
-                      controller.text.trim(),
-                    );
-                    if (!ctx.mounted) return;
-                    Navigator.of(ctx).pop();
-                    if (!mounted) return;
-                    _loadDrivers();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => _EditBusNumberDialog(
+        driverId: driver['id'] as int,
+        username: driver['username'] as String,
+        currentBusNumber: driver['bus_number'] as String? ?? '',
+      ),
     );
-
-    controller.dispose();
+    if (result == true && mounted) {
+      _loadDrivers();
+    }
   }
 
   @override
@@ -481,6 +292,282 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _AddDriverDialog extends StatefulWidget {
+  const _AddDriverDialog();
+
+  @override
+  State<_AddDriverDialog> createState() => _AddDriverDialogState();
+}
+
+class _AddDriverDialogState extends State<_AddDriverDialog> {
+  final DbHelper _db = DbHelper();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _busNumberController = TextEditingController();
+  bool _isLoading = false;
+  bool _obscure = true;
+  String? _error;
+  String? _busWarning;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _busNumberController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _error = 'Username and password required');
+      return;
+    }
+    if (password.length < 4) {
+      setState(() => _error = 'Password must be at least 4 characters');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final existing = await _db.getUserByUsername(username);
+      if (!mounted) return;
+      if (existing != null) {
+        setState(() {
+          _error = 'Username already exists';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final hash = DbHelper.hashPassword(password);
+      await _db.createUser(
+        username,
+        hash,
+        'driver',
+        busNumber: _busNumberController.text.trim(),
+      );
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add New Driver'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _usernameController,
+              textInputAction: TextInputAction.next,
+              enabled: !_isLoading,
+              decoration: InputDecoration(
+                labelText: 'Username',
+                prefixIcon: const Icon(Icons.person_outline, size: 20),
+                errorText: _error,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passwordController,
+              obscureText: _obscure,
+              enabled: !_isLoading,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscure
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    size: 20,
+                  ),
+                  onPressed: _isLoading
+                      ? null
+                      : () => setState(() => _obscure = !_obscure),
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _busNumberController,
+              textCapitalization: TextCapitalization.characters,
+              enabled: !_isLoading,
+              decoration: InputDecoration(
+                labelText: 'Bus Number (optional)',
+                hintText: 'e.g. KL-11-A-1234',
+                prefixIcon: const Icon(Icons.directions_bus_outlined, size: 20),
+                helperText: _busWarning,
+                helperStyle: const TextStyle(color: Colors.orange, fontSize: 11),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onChanged: (v) {
+                final warn = _validateBusNumber(v);
+                if (warn != _busWarning) {
+                  setState(() => _busWarning = warn);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditBusNumberDialog extends StatefulWidget {
+  final int driverId;
+  final String username;
+  final String currentBusNumber;
+
+  const _EditBusNumberDialog({
+    required this.driverId,
+    required this.username,
+    required this.currentBusNumber,
+  });
+
+  @override
+  State<_EditBusNumberDialog> createState() => _EditBusNumberDialogState();
+}
+
+class _EditBusNumberDialogState extends State<_EditBusNumberDialog> {
+  final DbHelper _db = DbHelper();
+  late final TextEditingController _controller;
+  bool _isLoading = false;
+  String? _busWarning;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.currentBusNumber);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      await _db.updateBusNumber(widget.driverId, _controller.text.trim());
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Edit Bus Number — ${widget.username}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _controller,
+            textCapitalization: TextCapitalization.characters,
+            autofocus: true,
+            enabled: !_isLoading,
+            decoration: InputDecoration(
+              labelText: 'Bus Number',
+              hintText: 'e.g. KL-11-A-1234',
+              errorText: _error,
+              prefixIcon: const Icon(Icons.directions_bus_outlined, size: 20),
+              helperText: _busWarning,
+              helperStyle: const TextStyle(color: Colors.orange, fontSize: 11),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onChanged: (v) {
+              final warn = _validateBusNumber(v);
+              if (warn != _busWarning) {
+                setState(() => _busWarning = warn);
+              }
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Save'),
+        ),
+      ],
     );
   }
 }

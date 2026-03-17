@@ -11,7 +11,6 @@ import '../widgets/buttons.dart';
 import '../widgets/map_widget.dart';
 import '../theme/app_colors.dart';
 import 'segment_list_screen.dart';
-import 'trip_history_screen.dart';
 
 /// Trip Summary Screen — shown after trip completion.
 ///
@@ -91,10 +90,15 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     final totalTerrainSegments =
         summary.plainSegments + summary.uphillSegments + summary.downhillSegments;
 
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (_, __) {
+        _goHome(provider);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
             // ─── Top Bar ─────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -356,38 +360,26 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    SecondaryButton(
-                      label: 'New Trip',
-                      icon: Icons.add_rounded,
-                      onPressed: () {
-                        provider.reset();
-                        Navigator.of(context)
-                            .pushReplacementNamed('/home');
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    SecondaryButton(
-                      label: 'View History',
-                      icon: Icons.history_rounded,
-                      onPressed: () {
-                        provider.reset();
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const TripHistoryScreen(),
-                          ),
-                          (route) => route.settings.name == '/home' || route.isFirst,
-                        );
-                      },
+                    PrimaryButton(
+                      label: 'Done',
+                      icon: Icons.check_rounded,
+                      onPressed: () => _goHome(provider),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  void _goHome(TripProvider provider) {
+    provider.reset();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
   }
 
   String _formatTime(DateTime dt) {

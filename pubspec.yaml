@@ -48,6 +48,9 @@ dependencies:
   # Security / Hashing
   crypto: ^3.0.3
 
+  # Device info
+  device_info_plus: ^10.1.2
+
   # HTTP
   http: ^1.2.1
 

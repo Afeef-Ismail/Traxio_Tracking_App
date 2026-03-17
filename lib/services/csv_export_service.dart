@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -79,9 +80,14 @@ class CsvExportService {
     required List<Map<String, dynamic>> rows,
     required bool includeDriverColumns,
   }) async {
-    final permissionStatus = await Permission.storage.request();
-    if (!permissionStatus.isGranted) {
-      throw Exception('Storage permission denied: $permissionStatus');
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt < 33) {
+        final permissionStatus = await Permission.storage.request();
+        if (!permissionStatus.isGranted) {
+          throw Exception('Storage permission denied: $permissionStatus');
+        }
+      }
     }
 
     final headers = <String>[
@@ -154,8 +160,9 @@ class CsvExportService {
 
   Future<Directory> _resolveDownloadsDirectory() async {
     final publicDownloads = Directory('/storage/emulated/0/Download');
-    if (publicDownloads.existsSync()) return publicDownloads;
-    publicDownloads.createSync(recursive: true);
+    if (!publicDownloads.existsSync()) {
+      publicDownloads.createSync(recursive: true);
+    }
     if (publicDownloads.existsSync()) return publicDownloads;
 
     final downloads = await getDownloadsDirectory();

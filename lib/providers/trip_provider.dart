@@ -10,7 +10,6 @@ import '../services/segmentation_service.dart';
 import '../services/trip_processor.dart';
 import '../analytics/trip_analytics.dart';
 import '../models/raw_model.dart';
-import '../models/segment_model.dart';
 import '../models/trip_model.dart';
 import '../database/db_helper.dart';
 import '../ui/widgets/map_widget.dart';
@@ -78,6 +77,8 @@ class TripProvider extends ChangeNotifier {
   int _lastMatchedCluster = -1;
   double _lastDeviation = 0.0;
   TripSummary? _lastSummary;
+  bool _isCollectionMode = false;
+  double _collectionSegmentDistanceM = AppConstants.collectionSegmentDistanceM;
 
   // ─── Current driver ID for trip attribution ────────────────────────
   int _currentUserId = 0;
@@ -121,6 +122,8 @@ class TripProvider extends ChangeNotifier {
   double get lastDeviation => _lastDeviation;
   TripSummary? get lastSummary => _lastSummary;
   bool get isRecording => _state == TripState.recording;
+  bool get isCollectionMode => _isCollectionMode;
+  double get collectionSegmentDistanceM => _collectionSegmentDistanceM;
   double? get currentLat => _currentLat;
   double? get currentLon => _currentLon;
   List<LatLng> get gpsTrail => List.unmodifiable(_gpsTrail);
@@ -131,6 +134,8 @@ class TripProvider extends ChangeNotifier {
   Future<void> startTrip() async {
     try {
       _tripId = const Uuid().v4();
+      _isCollectionMode = false;
+      _collectionSegmentDistanceM = AppConstants.segmentDistanceMeters;
       _segmentsCompleted = 0;
       _currentDistance = 0.0;
       _currentSpeed = 0.0;
@@ -173,7 +178,15 @@ class TripProvider extends ChangeNotifier {
       }
 
       // Initialize segmentation
-      _segmentationService.startNewTrip(_tripId);
+      _tripProcessor.init(
+        _tripId,
+        mode: 'benchmark',
+        segmentDistanceM: AppConstants.segmentDistanceMeters,
+      );
+      _segmentationService.startNewTrip(
+        _tripId,
+        segmentDistanceM: _tripProcessor.segmentDistanceM,
+      );
 
       // Load benchmark features from DB (cached for the trip)
       await _tripProcessor.loadBenchmarks();
@@ -201,6 +214,84 @@ class TripProvider extends ChangeNotifier {
     } catch (e) {
       _state = TripState.error;
       _errorMessage = 'Error starting trip: $e';
+      notifyListeners();
+    }
+  }
+
+  /// Start a new data collection trip recording (no scoring/AI coaching).
+  Future<void> startCollectionTrip(double segmentDistanceM) async {
+    try {
+      _tripId = const Uuid().v4();
+      _isCollectionMode = true;
+      _collectionSegmentDistanceM = segmentDistanceM;
+      _segmentsCompleted = 0;
+      _currentDistance = 0.0;
+      _currentSpeed = 0.0;
+      _currentTerrain = 'N/A';
+      _lastMatchedCluster = -1;
+      _lastDeviation = 0.0;
+      _lastSummary = null;
+      _currentLat = null;
+      _currentLon = null;
+      _gpsTrail.clear();
+      _segmentMarkers.clear();
+      _rawBuffer.clear();
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        _tripProcessor.slopeThreshold =
+            prefs.getDouble('slope_threshold') ?? 0.02;
+      } catch (_) {
+        _tripProcessor.slopeThreshold = 0.02;
+      }
+
+      await _db.insertDataCollectionTrip(_tripId, _currentUserId, segmentDistanceM);
+
+      _state = TripState.calibrating;
+      notifyListeners();
+
+      bool success;
+      if (AppConstants.demoMode) {
+        success = await _demoSensorService!.startCapture(_tripId);
+      } else {
+        success = await _sensorService!.startCapture(_tripId);
+      }
+
+      if (!success) {
+        _state = TripState.error;
+        _errorMessage = 'Failed to start sensors. Check permissions.';
+        notifyListeners();
+        return;
+      }
+
+      _tripProcessor.init(
+        _tripId,
+        mode: 'collection',
+        segmentDistanceM: segmentDistanceM,
+      );
+      _segmentationService.startNewTrip(
+        _tripId,
+        segmentDistanceM: _tripProcessor.segmentDistanceM,
+      );
+
+      final sampleStream = AppConstants.demoMode
+          ? _demoSensorService!.sampleStream
+          : _sensorService!.sampleStream;
+      _sampleSub = sampleStream.listen(_onSample);
+      _segmentSub =
+          _segmentationService.segmentStream.listen(_onSegmentComplete);
+
+      if (AppConstants.demoMode) {
+        _state = TripState.recording;
+        notifyListeners();
+      } else {
+        await Future.delayed(const Duration(seconds: 3));
+        _state = TripState.recording;
+        notifyListeners();
+      }
+    } catch (e) {
+      _state = TripState.error;
+      _errorMessage = 'Error starting data collection: $e';
       notifyListeners();
     }
   }
@@ -245,6 +336,46 @@ class TripProvider extends ChangeNotifier {
     } catch (e) {
       _state = TripState.error;
       _errorMessage = 'Error stopping trip: $e';
+      notifyListeners();
+    }
+  }
+
+  /// Stop the current data collection trip (no benchmark summary generation).
+  Future<void> stopCollectionTrip() async {
+    if (_state != TripState.recording || !_isCollectionMode) return;
+
+    _state = TripState.processing;
+    notifyListeners();
+
+    try {
+      if (AppConstants.demoMode) {
+        _demoSensorService!.stopCapture();
+      } else {
+        _sensorService!.stopCapture();
+      }
+      _sampleSub?.cancel();
+      _segmentSub?.cancel();
+
+      if (_rawBuffer.isNotEmpty) {
+        await _db.insertRawBatch(_rawBuffer);
+        _rawBuffer.clear();
+      }
+
+      _segmentationService.endTrip();
+
+      await _db.updateDataCollectionTripEnd(
+        _tripId,
+        DateTime.now().millisecondsSinceEpoch,
+        _segmentsCompleted,
+      );
+
+      _tripProcessor.clearBenchmarkCache();
+      _state = TripState.idle;
+      _isCollectionMode = false;
+      notifyListeners();
+    } catch (e) {
+      _state = TripState.error;
+      _errorMessage = 'Error stopping data collection: $e';
       notifyListeners();
     }
   }
@@ -306,6 +437,7 @@ class TripProvider extends ChangeNotifier {
   /// Reset to idle state.
   void reset() {
     _state = TripState.idle;
+    _isCollectionMode = false;
     _tripId = '';
     _errorMessage = '';
     _segmentsCompleted = 0;
@@ -328,6 +460,14 @@ class TripProvider extends ChangeNotifier {
   /// Get all past trip summaries.
   Future<List<TripSummary>> getTripHistory() async {
     return await _db.getAllTripSummaries();
+  }
+
+  Future<List<DataCollectionTrip>> getDataCollectionTripsForUser(int userId) async {
+    return await _db.getDataCollectionTripsForUser(userId);
+  }
+
+  Future<List<DataCollectionTrip>> getAllDataCollectionTrips() async {
+    return await _db.getAllDataCollectionTrips();
   }
 
   /// Load a specific trip summary (for re-viewing from history).

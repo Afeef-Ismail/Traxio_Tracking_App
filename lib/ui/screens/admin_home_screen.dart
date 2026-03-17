@@ -8,10 +8,11 @@ import 'coaching_report_screen.dart';
 import 'threshold_editor_screen.dart';
 import 'driver_management_screen.dart';
 import 'benchmark_editor_screen.dart';
+import 'admin_collection_screen.dart';
 
 /// Admin Home Screen — dashboard for admin users.
 ///
-/// Three sections: All Trips, Threshold Settings, Driver Management.
+/// Management + trip overview dashboard for admin users.
 /// Logout button in AppBar.
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -69,54 +70,65 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             // ─── Management Cards ────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+              child: GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: 1.7,
                 children: [
-                  Expanded(
-                    child: _AdminActionCard(
-                      icon: Icons.tune_rounded,
-                      label: 'Threshold\nSettings',
-                      color: AppColors.terrainUphill,
-                      isDark: isDark,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ThresholdEditorScreen(),
-                          ),
-                        );
-                      },
-                    ),
+                  _AdminActionCard(
+                    icon: Icons.tune_rounded,
+                    label: 'Threshold\nSettings',
+                    color: AppColors.terrainUphill,
+                    isDark: isDark,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ThresholdEditorScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _AdminActionCard(
-                      icon: Icons.people_rounded,
-                      label: 'Driver\nManagement',
-                      color: AppColors.terrainDownhill,
-                      isDark: isDark,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const DriverManagementScreen(),
-                          ),
-                        );
-                      },
-                    ),
+                  _AdminActionCard(
+                    icon: Icons.people_rounded,
+                    label: 'Driver\nManagement',
+                    color: AppColors.terrainDownhill,
+                    isDark: isDark,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DriverManagementScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _AdminActionCard(
-                      icon: Icons.bar_chart_rounded,
-                      label: 'Benchmark\nRanges',
-                      color: AppColors.primary,
-                      isDark: isDark,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const BenchmarkEditorScreen(),
-                          ),
-                        );
-                      },
-                    ),
+                  _AdminActionCard(
+                    icon: Icons.bar_chart_rounded,
+                    label: 'Benchmark\nRanges',
+                    color: AppColors.primary,
+                    isDark: isDark,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const BenchmarkEditorScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _AdminActionCard(
+                    icon: Icons.dataset_rounded,
+                    label: 'Data Collection\nTrips',
+                    color: AppColors.success,
+                    isDark: isDark,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const AdminCollectionScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

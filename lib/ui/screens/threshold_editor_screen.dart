@@ -30,6 +30,7 @@ class _ThresholdEditorScreenState extends State<ThresholdEditorScreen> {
     'terrain_slope_uphill_threshold': 'Uphill Slope Threshold',
     'terrain_slope_downhill_threshold': 'Downhill Slope Threshold',
     'segment_length_meters': 'Segment Length (meters)',
+    'collection_segment_distance_m': 'Data Collection Segment Distance (m)',
     'deviation_score_max': 'Max Deviation Score',
     'cluster0_label': 'Cluster 0 Label',
     'cluster1_label': 'Cluster 1 Label',
@@ -43,6 +44,8 @@ class _ThresholdEditorScreenState extends State<ThresholdEditorScreen> {
         'Slope below which terrain is classified as Downhill (negative value)',
     'segment_length_meters':
         'Distance in meters for each analysis segment',
+    'collection_segment_distance_m':
+      'Default: 100m. Range: 50–500m.',
     'deviation_score_max':
         'Maximum deviation score cap',
     'cluster0_label':

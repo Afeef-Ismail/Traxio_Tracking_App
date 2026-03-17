@@ -2,6 +2,7 @@
 class Segment {
   final int? id;
   final String tripId;
+  final String mode;
   final int segmentIndex;
   final int startTime;  // ms since epoch
   final int endTime;    // ms since epoch
@@ -19,6 +20,7 @@ class Segment {
   Segment({
     this.id,
     required this.tripId,
+    this.mode = 'benchmark',
     required this.segmentIndex,
     required this.startTime,
     required this.endTime,
@@ -38,6 +40,7 @@ class Segment {
     return {
       'id': id,
       'trip_id': tripId,
+      'mode': mode,
       'segment_index': segmentIndex,
       'start_time': startTime,
       'end_time': endTime,
@@ -58,6 +61,7 @@ class Segment {
     return Segment(
       id: map['id'] as int?,
       tripId: map['trip_id'] as String,
+      mode: (map['mode'] as String?) ?? 'benchmark',
       segmentIndex: map['segment_index'] as int,
       startTime: map['start_time'] as int,
       endTime: map['end_time'] as int,

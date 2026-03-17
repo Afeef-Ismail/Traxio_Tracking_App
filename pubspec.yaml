@@ -51,6 +51,9 @@ dependencies:
   # HTTP
   http: ^1.2.1
 
+  # File sharing
+  share_plus: ^10.0.2
+
   # AI / Gemini
   google_generative_ai: ^0.4.3
 

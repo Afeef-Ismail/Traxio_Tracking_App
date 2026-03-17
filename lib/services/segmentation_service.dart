@@ -1,6 +1,5 @@
 import 'dart:async';
 import '../models/raw_model.dart';
-import '../models/segment_model.dart';
 import '../config/constants.dart';
 import '../utils/haversine.dart';
 
@@ -42,12 +41,14 @@ class SegmentationService {
   SegmentBuffer? _currentBuffer;
   int _segmentIndex = 0;
   double _cumulativeDistance = 0.0;
+  double _segmentDistanceMeters = AppConstants.segmentDistanceMeters;
   RawSample? _prevSample;
 
   /// Reset for a new trip.
-  void startNewTrip(String tripId) {
+  void startNewTrip(String tripId, {double? segmentDistanceM}) {
     _segmentIndex = 0;
     _cumulativeDistance = 0.0;
+    _segmentDistanceMeters = segmentDistanceM ?? AppConstants.segmentDistanceMeters;
     _prevSample = null;
     _currentBuffer = SegmentBuffer(
       tripId: tripId,
@@ -73,8 +74,7 @@ class SegmentationService {
     _currentBuffer!.addSample(sample);
     _prevSample = sample;
 
-    // Check if we've reached 100m
-    if (_cumulativeDistance >= AppConstants.segmentDistanceMeters) {
+    if (_cumulativeDistance >= _segmentDistanceMeters) {
       _closeCurrentSegment();
     }
   }

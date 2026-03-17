@@ -25,6 +25,9 @@ class AppConstants {
   /// Segment distance in meters
   static const double segmentDistanceMeters = 100.0;
 
+  /// Default segment distance for Data Collection mode (admin configurable).
+  static double collectionSegmentDistanceM = 100.0;
+
   /// Minimum samples required for a valid segment
   static const int minSegmentSamples = 5;
 
@@ -69,7 +72,7 @@ class AppConstants {
 
   // ─── Database ──────────────────────────────────────────────────────
   static const String dbName = 'ksrtc_benchmarking.db';
-  static const int dbVersion = 6;
+  static const int dbVersion = 7;
 
   // ─── Gemini AI ─────────────────────────────────────────────────────
   static const String geminiApiKey = 'AIzaSyBk5Ctm7Jh5j8kySFVm71uu1Sz6xMKdID8';

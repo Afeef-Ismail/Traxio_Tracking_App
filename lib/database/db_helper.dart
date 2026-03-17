@@ -62,6 +62,7 @@ class DbHelper {
       CREATE TABLE segments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         trip_id TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'benchmark',
         segment_index INTEGER NOT NULL,
         start_time INTEGER NOT NULL,
         end_time INTEGER NOT NULL,
@@ -80,6 +81,9 @@ class DbHelper {
 
     await db.execute(
         'CREATE INDEX idx_seg_trip ON segments(trip_id)');
+
+    // ─── data_collection_trips ────────────────────────────────────
+    await _createDataCollectionTripsTable(db);
 
     // ─── features ──────────────────────────────────────────────────
     await db.execute('''
@@ -178,6 +182,16 @@ class DbHelper {
       await db.execute(
           "ALTER TABLE trip_summaries ADD COLUMN score REAL NOT NULL DEFAULT -1");
     }
+    if (oldVersion < 7) {
+      await db.execute(
+          "ALTER TABLE segments ADD COLUMN mode TEXT NOT NULL DEFAULT 'benchmark'");
+      await _createDataCollectionTripsTable(db);
+      await db.insert('config', {
+        'key': 'collection_segment_distance_m',
+        'value': '100.0',
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
   }
 
   /// Create the users table.
@@ -227,6 +241,28 @@ class DbHelper {
     ''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_bench_terrain ON benchmark_config(terrain)');
+  }
+
+  Future<void> _createDataCollectionTripsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS data_collection_trips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id TEXT NOT NULL UNIQUE,
+        driver_id INTEGER NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'collection',
+        segment_distance_m REAL NOT NULL DEFAULT 100.0,
+        start_time INTEGER NOT NULL,
+        end_time INTEGER,
+        total_segments INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (driver_id) REFERENCES users(id)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_collection_driver ON data_collection_trips(driver_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_collection_trip ON data_collection_trips(trip_id)');
   }
 
   /// Seed benchmark_config from hardcoded BenchmarkTables defaults.
@@ -291,6 +327,7 @@ class DbHelper {
         'terrain_slope_uphill_threshold': '0.02',
         'terrain_slope_downhill_threshold': '-0.02',
         'segment_length_meters': '100',
+        'collection_segment_distance_m': '100.0',
         'deviation_score_max': '1000',
         'cluster0_label': 'Master Style A',
         'cluster1_label': 'Master Style B',
@@ -601,6 +638,8 @@ class DbHelper {
           where: 'trip_id = ?', whereArgs: [tripId]);
       await txn.delete('trip_summaries',
           where: 'trip_id = ?', whereArgs: [tripId]);
+        await txn.delete('data_collection_trips',
+          where: 'trip_id = ?', whereArgs: [tripId]);
     });
   }
 
@@ -612,6 +651,147 @@ class DbHelper {
     await db.delete('segments');
     await db.delete('raw_data');
     await db.delete('trip_summaries');
+    await db.delete('data_collection_trips');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // DATA COLLECTION TRIP OPERATIONS
+  // ═══════════════════════════════════════════════════════════════════
+
+  Future<void> insertDataCollectionTrip(
+    String tripId,
+    int driverId,
+    double segmentDistanceM,
+  ) async {
+    final db = await database;
+    await db.insert(
+      'data_collection_trips',
+      {
+        'trip_id': tripId,
+        'driver_id': driverId,
+        'mode': 'collection',
+        'segment_distance_m': segmentDistanceM,
+        'start_time': DateTime.now().millisecondsSinceEpoch,
+        'end_time': null,
+        'total_segments': 0,
+        'notes': '',
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> updateDataCollectionTripEnd(
+    String tripId,
+    int endTime,
+    int totalSegments,
+  ) async {
+    final db = await database;
+    await db.update(
+      'data_collection_trips',
+      {
+        'end_time': endTime,
+        'total_segments': totalSegments,
+      },
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+  }
+
+  Future<List<DataCollectionTrip>> getDataCollectionTripsForUser(int userId) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT t.*, u.username, u.bus_number,
+        (SELECT s.nearest_landmark FROM segments s
+          WHERE s.trip_id = t.trip_id AND s.mode = 'collection'
+          ORDER BY s.segment_index ASC LIMIT 1) AS start_landmark,
+        (SELECT s.nearest_landmark FROM segments s
+          WHERE s.trip_id = t.trip_id AND s.mode = 'collection'
+          ORDER BY s.segment_index DESC LIMIT 1) AS end_landmark
+      FROM data_collection_trips t
+      LEFT JOIN users u ON t.driver_id = u.id
+      WHERE t.driver_id = ?
+      ORDER BY t.start_time DESC
+    ''', [userId]);
+    return maps.map((m) => DataCollectionTrip.fromMap(m)).toList();
+  }
+
+  Future<List<DataCollectionTrip>> getAllDataCollectionTrips() async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT t.*, u.username, u.bus_number,
+        (SELECT s.nearest_landmark FROM segments s
+          WHERE s.trip_id = t.trip_id AND s.mode = 'collection'
+          ORDER BY s.segment_index ASC LIMIT 1) AS start_landmark,
+        (SELECT s.nearest_landmark FROM segments s
+          WHERE s.trip_id = t.trip_id AND s.mode = 'collection'
+          ORDER BY s.segment_index DESC LIMIT 1) AS end_landmark
+      FROM data_collection_trips t
+      LEFT JOIN users u ON t.driver_id = u.id
+      ORDER BY t.start_time DESC
+    ''');
+    return maps.map((m) => DataCollectionTrip.fromMap(m)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getSegmentsWithFeaturesForTrip(String tripId) async {
+    final db = await database;
+    final segments = await db.rawQuery('''
+      SELECT
+        s.id AS segment_id,
+        s.trip_id,
+        s.segment_index,
+        s.start_time,
+        s.end_time,
+        (s.end_time - s.start_time) / 1000.0 AS duration_seconds,
+        s.terrain,
+        s.distance AS distance_m,
+        s.start_lat,
+        s.start_lon,
+        s.end_lat,
+        s.end_lon,
+        s.nearest_landmark,
+        (
+          SELECT COUNT(1)
+          FROM raw_data r
+          WHERE r.trip_id = s.trip_id
+            AND r.timestamp >= s.start_time
+            AND r.timestamp <= s.end_time
+        ) AS sample_count
+      FROM segments s
+      WHERE s.trip_id = ? AND s.mode = 'collection'
+      ORDER BY s.segment_index ASC
+    ''', [tripId]);
+
+    if (segments.isEmpty) return [];
+
+    final segmentIds = segments
+        .map((s) => s['segment_id'] as int)
+        .toList();
+    final placeholders = List.filled(segmentIds.length, '?').join(',');
+
+    final featureRows = await db.rawQuery('''
+      SELECT segment_id, feature_name, value
+      FROM features
+      WHERE segment_id IN ($placeholders)
+    ''', segmentIds);
+
+    final featureMapBySegment = <int, Map<String, double>>{};
+    for (final row in featureRows) {
+      final segmentId = row['segment_id'] as int;
+      final map = featureMapBySegment.putIfAbsent(segmentId, () => <String, double>{});
+      map[row['feature_name'] as String] = (row['value'] as num).toDouble();
+    }
+
+    final result = <Map<String, dynamic>>[];
+    for (final seg in segments) {
+      final segmentId = seg['segment_id'] as int;
+      result.add({
+        ...seg,
+        ...?featureMapBySegment[segmentId],
+      });
+    }
+
+    return result;
   }
 
   /// Close the database.

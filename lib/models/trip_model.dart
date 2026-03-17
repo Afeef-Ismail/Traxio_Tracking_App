@@ -135,3 +135,79 @@ class TripSummary {
     );
   }
 }
+
+/// Data-collection trip metadata (non-benchmark mode, no scoring).
+class DataCollectionTrip {
+  final int? id;
+  final String tripId;
+  final int driverId;
+  final String mode;
+  final double segmentDistanceM;
+  final DateTime startTime;
+  final DateTime? endTime;
+  final int totalSegments;
+  final String notes;
+  final String createdAt;
+  final String driverUsername;
+  final String busNumber;
+  final String routeDescription;
+
+  DataCollectionTrip({
+    this.id,
+    required this.tripId,
+    required this.driverId,
+    this.mode = 'collection',
+    required this.segmentDistanceM,
+    required this.startTime,
+    this.endTime,
+    this.totalSegments = 0,
+    this.notes = '',
+    this.createdAt = '',
+    this.driverUsername = '',
+    this.busNumber = '',
+    this.routeDescription = '',
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'trip_id': tripId,
+      'driver_id': driverId,
+      'mode': mode,
+      'segment_distance_m': segmentDistanceM,
+      'start_time': startTime.millisecondsSinceEpoch,
+      'end_time': endTime?.millisecondsSinceEpoch,
+      'total_segments': totalSegments,
+      'notes': notes,
+      'created_at': createdAt,
+    };
+  }
+
+  factory DataCollectionTrip.fromMap(Map<String, dynamic> map) {
+    final startMs = map['start_time'] as int? ?? 0;
+    final endMs = map['end_time'] as int?;
+    final startLandmark = (map['start_landmark'] as String?) ?? '';
+    final endLandmark = (map['end_landmark'] as String?) ?? '';
+    final routeDescription = startLandmark.isNotEmpty || endLandmark.isNotEmpty
+        ? '${startLandmark.isEmpty ? 'Unknown' : startLandmark} → ${endLandmark.isEmpty ? 'Unknown' : endLandmark}'
+        : '';
+
+    return DataCollectionTrip(
+      id: map['id'] as int?,
+      tripId: map['trip_id'] as String,
+      driverId: map['driver_id'] as int? ?? 0,
+      mode: (map['mode'] as String?) ?? 'collection',
+      segmentDistanceM: (map['segment_distance_m'] as num?)?.toDouble() ?? 100.0,
+      startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
+      endTime: endMs != null
+          ? DateTime.fromMillisecondsSinceEpoch(endMs)
+          : null,
+      totalSegments: map['total_segments'] as int? ?? 0,
+      notes: (map['notes'] as String?) ?? '',
+      createdAt: (map['created_at'] as String?) ?? '',
+      driverUsername: (map['username'] as String?) ?? '',
+      busNumber: (map['bus_number'] as String?) ?? '',
+      routeDescription: routeDescription,
+    );
+  }
+}

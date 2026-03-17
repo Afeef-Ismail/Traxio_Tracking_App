@@ -1,4 +1,3 @@
-import '../models/raw_model.dart';
 import '../models/segment_model.dart';
 import '../models/feature_result.dart';
 import '../models/trip_model.dart';
@@ -47,9 +46,26 @@ class SegmentProcessResult {
 ///   7. Persist everything to database
 class TripProcessor {
   final DbHelper _db = DbHelper();
+  String _tripId = '';
+  String _mode = 'benchmark';
+  double _segmentDistanceM = AppConstants.segmentDistanceMeters;
 
   /// Slope threshold — can be updated from Settings.
   double slopeThreshold = AppConstants.uphillSlopeThreshold;
+
+  void init(
+    String tripId, {
+    String mode = 'benchmark',
+    double segmentDistanceM = 100.0,
+  }) {
+    _tripId = tripId;
+    _mode = mode;
+    _segmentDistanceM = segmentDistanceM;
+  }
+
+  String get mode => _mode;
+  String get tripId => _tripId;
+  double get segmentDistanceM => _segmentDistanceM;
 
   /// Cached benchmark features per terrain, loaded from DB once per trip.
   final Map<String, List<BenchmarkFeature>> _benchmarkCache = {};
@@ -178,6 +194,7 @@ class TripProcessor {
 
     final segment = Segment(
       tripId: segData.tripId,
+      mode: _mode,
       segmentIndex: segData.segmentIndex,
       startTime: segData.startTime,
       endTime: segData.endTime,
@@ -235,6 +252,17 @@ class TripProcessor {
         .toList();
 
     await _db.insertFeatures(featureResults);
+
+    if (_mode == 'collection') {
+      return SegmentProcessResult(
+        segmentId: segmentId,
+        terrain: terrain,
+        matchedCluster: -1,
+        cluster0Deviation: 0,
+        cluster1Deviation: 0,
+        isValid: true,
+      );
+    }
 
     // ─── 9. Compute deviation scores ───────────────────────────────
     final devResult = DeviationEngine.computeSegmentDeviation(

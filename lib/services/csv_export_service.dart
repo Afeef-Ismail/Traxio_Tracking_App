@@ -43,12 +43,17 @@ class CsvExportService {
   }
 
   Future<String> exportTripCSV(String tripId) async {
+    final normalizedTripId = tripId.trim();
+    if (normalizedTripId.isEmpty) {
+      throw Exception('Invalid trip ID for export');
+    }
+
     final rows = await _db.getSegmentsWithFeaturesForTrip(
       tripId,
       mode: 'collection',
     );
     final path = await _writeCsvFile(
-      fileName: 'ksrtc_collection_$tripId.csv',
+      fileName: 'ksrtc_collection_${_sanitizeForFileName(normalizedTripId)}.csv',
       rows: rows,
       includeDriverColumns: false,
     );
@@ -57,6 +62,11 @@ class CsvExportService {
 
   Future<String> exportBenchmarkTripCSV(String tripId) async {
     try {
+      final normalizedTripId = tripId.trim();
+      if (normalizedTripId.isEmpty) {
+        throw Exception('Invalid trip ID for export');
+      }
+
       final rows = await _db.getSegmentsWithFeaturesForTrip(
         tripId,
         mode: 'benchmark',
@@ -95,7 +105,7 @@ class CsvExportService {
       ];
 
       return await _writeCsvFileWithHeaders(
-        fileName: 'ksrtc_benchmark_$tripId.csv',
+        fileName: 'ksrtc_benchmark_${_sanitizeForFileName(normalizedTripId)}.csv',
         rows: enrichedRows,
         headers: headers,
       );
@@ -184,11 +194,22 @@ class CsvExportService {
     }
 
     final file = File(p.join(downloadsDir.path, fileName));
-    await file.writeAsString(buffer.toString());
+    await file.writeAsString(buffer.toString(), flush: true);
     if (!file.existsSync()) {
       throw Exception('CSV write failed: file not found at ${file.path}');
     }
+    final fileLength = await file.length();
+    if (fileLength == 0) {
+      throw Exception('CSV write failed: file is empty at ${file.path}');
+    }
     return file.path;
+  }
+
+  String _sanitizeForFileName(String input) {
+    final safe = input
+        .replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+    return safe.isEmpty ? 'trip' : safe;
   }
 
   Future<void> _ensureStoragePermissionIfNeeded() async {

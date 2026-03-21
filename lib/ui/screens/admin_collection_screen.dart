@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/trip_model.dart';
@@ -46,15 +47,21 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
   Future<void> _exportTrip(String tripId) async {
     setState(() => _exportingTripId = tripId);
     try {
+      final normalizedTripId = tripId.trim();
+      if (normalizedTripId.isEmpty) {
+        throw Exception('Invalid trip ID for export');
+      }
+
       final path = await _csvExportService.exportTripCSV(tripId);
+      final exportedFile = XFile(path);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved to Downloads: ksrtc_collection_$tripId.csv'),
+          content: Text('CSV saved to Downloads: ${p.basename(path)}'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Share',
-            onPressed: () => Share.shareXFiles([XFile(path)]),
+            onPressed: () => Share.shareXFiles([exportedFile]),
           ),
         ),
       );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../providers/auth_provider.dart';
@@ -49,15 +50,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   Future<void> _exportTripCsv(String tripId) async {
     setState(() => _exportingTripId = tripId);
     try {
+      final normalizedTripId = tripId.trim();
+      if (normalizedTripId.isEmpty) {
+        throw Exception('Invalid trip ID for export');
+      }
+
       final path = await _csvExportService.exportBenchmarkTripCSV(tripId);
+      final exportedFile = XFile(path);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved to Downloads: ksrtc_benchmark_$tripId.csv'),
+          content: Text('CSV saved to Downloads: ${p.basename(path)}'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Share',
-            onPressed: () => Share.shareXFiles([XFile(path)]),
+            onPressed: () => Share.shareXFiles([exportedFile]),
           ),
         ),
       );

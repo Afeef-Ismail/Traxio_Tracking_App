@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
 import '../../analytics/coaching_engine.dart';
 import '../../analytics/score_calculator.dart';
+import '../../services/csv_export_service.dart';
 import '../theme/app_colors.dart';
 
 /// Coaching Report Screen — read-only view of cached coaching data
@@ -20,15 +22,45 @@ class CoachingReportScreen extends StatefulWidget {
 
 class _CoachingReportScreenState extends State<CoachingReportScreen> {
   bool _loading = true;
+  bool _exporting = false;
   TripSummary? _summary;
   int _tripScore = -1;
   List<CoachingInsight> _insights = [];
   List<SegmentDetail> _segments = [];
+  final CsvExportService _csvExportService = CsvExportService();
 
   @override
   void initState() {
     super.initState();
     _loadReport();
+  }
+
+  Future<void> _exportTripCsv() async {
+    setState(() => _exporting = true);
+    try {
+      final path = await _csvExportService.exportBenchmarkTripCSV(widget.tripId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV saved to Downloads: ksrtc_benchmark_${widget.tripId}.csv'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Share',
+            onPressed: () => Share.shareXFiles([XFile(path)]),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
   Future<void> _loadReport() async {
@@ -71,6 +103,19 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Export CSV',
+            onPressed: _loading || _exporting ? null : _exportTripCsv,
+            icon: _exporting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: _loading

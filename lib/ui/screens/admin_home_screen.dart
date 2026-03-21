@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
+import '../../services/csv_export_service.dart';
 import '../theme/app_colors.dart';
 import 'coaching_report_screen.dart';
 import 'threshold_editor_screen.dart';
@@ -24,6 +26,8 @@ class AdminHomeScreen extends StatefulWidget {
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   List<TripSummary> _trips = [];
   bool _loading = true;
+  String? _exportingTripId;
+  final CsvExportService _csvExportService = CsvExportService();
 
   @override
   void initState() {
@@ -39,6 +43,36 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         _trips = trips;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _exportTripCsv(String tripId) async {
+    setState(() => _exportingTripId = tripId);
+    try {
+      final path = await _csvExportService.exportBenchmarkTripCSV(tripId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV saved to Downloads: ksrtc_benchmark_$tripId.csv'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Share',
+            onPressed: () => Share.shareXFiles([XFile(path)]),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exportingTripId = null);
+      }
     }
   }
 
@@ -185,6 +219,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               ..._trips.map((trip) => _AdminTripCard(
                     trip: trip,
                     isDark: isDark,
+                    exporting: _exportingTripId == trip.tripId,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -193,6 +228,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                         ),
                       );
                     },
+                    onExportCsv: () => _exportTripCsv(trip.tripId),
                     onDelete: () => _confirmDelete(trip),
                   )),
           ],
@@ -231,6 +267,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   }
 
   Future<void> _confirmDelete(TripSummary trip) async {
+    final tripProvider = context.read<TripProvider>();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -252,7 +289,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       ),
     );
     if (confirmed == true) {
-      await context.read<TripProvider>().deleteTrip(trip.tripId);
+      await tripProvider.deleteTrip(trip.tripId);
+      if (!mounted) return;
       _loadTrips();
     }
   }
@@ -344,12 +382,16 @@ class _AdminTripCard extends StatelessWidget {
   final TripSummary trip;
   final bool isDark;
   final VoidCallback onTap;
+  final VoidCallback onExportCsv;
+  final bool exporting;
   final VoidCallback onDelete;
 
   const _AdminTripCard({
     required this.trip,
     required this.isDark,
     required this.onTap,
+    required this.onExportCsv,
+    required this.exporting,
     required this.onDelete,
   });
 
@@ -522,6 +564,24 @@ class _AdminTripCard extends StatelessWidget {
                       _TerrainChip('Downhill', trip.downhillSegments),
                     ],
                   ],
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: exporting ? null : onExportCsv,
+                    icon: exporting
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_rounded, size: 16),
+                    label: const Text('Export CSV'),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                 ),
               ],
             ),

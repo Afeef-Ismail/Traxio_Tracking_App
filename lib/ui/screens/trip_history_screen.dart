@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
 import '../../analytics/score_calculator.dart';
-import '../widgets/summary_card.dart';
-import '../widgets/terrain_badge.dart';
+import '../../services/csv_export_service.dart';
 import '../theme/app_colors.dart';
 import 'coaching_report_screen.dart';
 
@@ -22,6 +22,8 @@ class TripHistoryScreen extends StatefulWidget {
 class _TripHistoryScreenState extends State<TripHistoryScreen> {
   List<TripSummary> _trips = [];
   bool _loading = true;
+  final CsvExportService _csvExportService = CsvExportService();
+  String? _exportingTripId;
 
   @override
   void initState() {
@@ -37,6 +39,36 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
         _trips = trips;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _exportTripCsv(String tripId) async {
+    setState(() => _exportingTripId = tripId);
+    try {
+      final path = await _csvExportService.exportBenchmarkTripCSV(tripId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV saved to Downloads: ksrtc_benchmark_$tripId.csv'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Share',
+            onPressed: () => Share.shareXFiles([XFile(path)]),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exportingTripId = null);
+      }
     }
   }
 
@@ -111,7 +143,9 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
           return _TripCard(
             trip: trip,
             isDark: isDark,
+            exporting: _exportingTripId == trip.tripId,
             onDelete: () async {
+              final tripProvider = context.read<TripProvider>();
               final confirmed = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
@@ -135,10 +169,12 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
                 ),
               );
               if (confirmed == true) {
-                await context.read<TripProvider>().deleteTrip(trip.tripId);
+                await tripProvider.deleteTrip(trip.tripId);
+                if (!mounted) return;
                 _loadTrips();
               }
             },
+            onExportCsv: () => _exportTripCsv(trip.tripId),
           );
         },
       ),
@@ -150,11 +186,15 @@ class _TripCard extends StatelessWidget {
   final TripSummary trip;
   final bool isDark;
   final VoidCallback onDelete;
+  final VoidCallback onExportCsv;
+  final bool exporting;
 
   const _TripCard({
     required this.trip,
     required this.isDark,
     required this.onDelete,
+    required this.onExportCsv,
+    required this.exporting,
   });
 
   @override
@@ -286,6 +326,24 @@ class _TripCard extends StatelessWidget {
                       _TerrainChip('Downhill', trip.downhillSegments),
                     ],
                   ],
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: exporting ? null : onExportCsv,
+                    icon: exporting
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_rounded, size: 16),
+                    label: const Text('Export CSV'),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                 ),
               ],
             ),

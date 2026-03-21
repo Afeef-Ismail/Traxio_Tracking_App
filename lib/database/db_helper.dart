@@ -733,12 +733,18 @@ class DbHelper {
     return maps.map((m) => DataCollectionTrip.fromMap(m)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> getSegmentsWithFeaturesForTrip(String tripId) async {
+  Future<List<Map<String, dynamic>>> getSegmentsWithFeaturesForTrip(
+    String tripId, {
+    String? mode,
+  }) async {
     final db = await database;
+    final whereMode = mode == null ? '' : ' AND s.mode = ?';
+    final args = <Object?>[tripId, if (mode != null) mode];
     final segments = await db.rawQuery('''
       SELECT
         s.id AS segment_id,
         s.trip_id,
+        s.mode,
         s.segment_index,
         s.start_time,
         s.end_time,
@@ -758,9 +764,9 @@ class DbHelper {
             AND r.timestamp <= s.end_time
         ) AS sample_count
       FROM segments s
-      WHERE s.trip_id = ? AND s.mode = 'collection'
+      WHERE s.trip_id = ?$whereMode
       ORDER BY s.segment_index ASC
-    ''', [tripId]);
+    ''', args);
 
     if (segments.isEmpty) return [];
 
@@ -792,6 +798,34 @@ class DbHelper {
     }
 
     return result;
+  }
+
+  Future<Map<int, Map<String, dynamic>>> getSegmentScoresMapForTrip(
+    String tripId,
+  ) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT
+        s.id AS segment_id,
+        ss.matched_cluster,
+        ss.cluster0_deviation,
+        ss.cluster1_deviation
+      FROM segments s
+      LEFT JOIN segment_scores ss ON ss.segment_id = s.id
+      WHERE s.trip_id = ?
+      ORDER BY s.segment_index ASC
+    ''', [tripId]);
+
+    final map = <int, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final segmentId = row['segment_id'] as int;
+      map[segmentId] = {
+        'matched_cluster': row['matched_cluster'],
+        'cluster0_deviation': row['cluster0_deviation'],
+        'cluster1_deviation': row['cluster1_deviation'],
+      };
+    }
+    return map;
   }
 
   /// Close the database.

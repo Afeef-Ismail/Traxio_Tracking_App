@@ -13,6 +13,7 @@ class CsvExportService {
 
   static const List<String> _featureNames = [
     'ARV',
+    'AvgAmplitude',
     'CrestFactor',
     'FreqCentroid',
     'FreqVariance',
@@ -26,7 +27,6 @@ class CsvExportService {
     'ShapeFactor',
     'SpectralEntropy',
     'Std',
-    'AvgAmplitude',
   ];
 
   static final List<String> _attributes =
@@ -43,7 +43,10 @@ class CsvExportService {
   }
 
   Future<String> exportTripCSV(String tripId) async {
-    final rows = await _db.getSegmentsWithFeaturesForTrip(tripId);
+    final rows = await _db.getSegmentsWithFeaturesForTrip(
+      tripId,
+      mode: 'collection',
+    );
     final path = await _writeCsvFile(
       fileName: 'ksrtc_collection_$tripId.csv',
       rows: rows,
@@ -52,12 +55,64 @@ class CsvExportService {
     return path;
   }
 
+  Future<String> exportBenchmarkTripCSV(String tripId) async {
+    try {
+      final rows = await _db.getSegmentsWithFeaturesForTrip(
+        tripId,
+        mode: 'benchmark',
+      );
+      final scoreMap = await _db.getSegmentScoresMapForTrip(tripId);
+
+      final enrichedRows = rows.map((row) {
+        final segmentId = row['segment_id'] as int;
+        final score = scoreMap[segmentId] ?? const <String, dynamic>{};
+        return {
+          ...row,
+          'matched_cluster': score['matched_cluster'],
+          'cluster0_deviation': score['cluster0_deviation'],
+          'cluster1_deviation': score['cluster1_deviation'],
+        };
+      }).toList();
+
+      final headers = <String>[
+        'trip_id',
+        'segment_index',
+        'start_time',
+        'end_time',
+        'duration_seconds',
+        'terrain',
+        'distance_m',
+        'start_lat',
+        'start_lon',
+        'end_lat',
+        'end_lon',
+        'nearest_landmark',
+        'sample_count',
+        'matched_cluster',
+        'cluster0_deviation',
+        'cluster1_deviation',
+        ...featureColumns,
+      ];
+
+      return await _writeCsvFileWithHeaders(
+        fileName: 'ksrtc_benchmark_$tripId.csv',
+        rows: enrichedRows,
+        headers: headers,
+      );
+    } catch (e) {
+      throw Exception(e.toString());
+    }
+  }
+
   Future<String> exportAllCollectionCSV() async {
     final trips = await _db.getAllDataCollectionTrips();
     final allRows = <Map<String, dynamic>>[];
 
     for (final trip in trips) {
-      final rows = await _db.getSegmentsWithFeaturesForTrip(trip.tripId);
+      final rows = await _db.getSegmentsWithFeaturesForTrip(
+        trip.tripId,
+        mode: 'collection',
+      );
       for (final row in rows) {
         allRows.add({
           'driver_username': trip.driverUsername,
@@ -80,16 +135,6 @@ class CsvExportService {
     required List<Map<String, dynamic>> rows,
     required bool includeDriverColumns,
   }) async {
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      if (androidInfo.version.sdkInt < 33) {
-        final permissionStatus = await Permission.storage.request();
-        if (!permissionStatus.isGranted) {
-          throw Exception('Storage permission denied: $permissionStatus');
-        }
-      }
-    }
-
     final headers = <String>[
       if (includeDriverColumns) ...['driver_username', 'bus_number'],
       'trip_id',
@@ -107,6 +152,20 @@ class CsvExportService {
       'sample_count',
       ...featureColumns,
     ];
+
+    return _writeCsvFileWithHeaders(
+      fileName: fileName,
+      rows: rows,
+      headers: headers,
+    );
+  }
+
+  Future<String> _writeCsvFileWithHeaders({
+    required String fileName,
+    required List<Map<String, dynamic>> rows,
+    required List<String> headers,
+  }) async {
+    await _ensureStoragePermissionIfNeeded();
 
     final buffer = StringBuffer();
     buffer.writeln(headers.join(','));
@@ -130,6 +189,18 @@ class CsvExportService {
       throw Exception('CSV write failed: file not found at ${file.path}');
     }
     return file.path;
+  }
+
+  Future<void> _ensureStoragePermissionIfNeeded() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt < 33) {
+        final permissionStatus = await Permission.storage.request();
+        if (!permissionStatus.isGranted) {
+          throw Exception('Storage permission denied: $permissionStatus');
+        }
+      }
+    }
   }
 
   String _extractValue(String key, Map<String, dynamic> row) {

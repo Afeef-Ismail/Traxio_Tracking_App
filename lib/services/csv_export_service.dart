@@ -85,6 +85,7 @@ class CsvExportService {
       }).toList();
 
       final headers = <String>[
+        'csv_row_number',
         'trip_id',
         'segment_index',
         'start_time',
@@ -98,6 +99,7 @@ class CsvExportService {
         'end_lon',
         'nearest_landmark',
         'sample_count',
+        'is_valid',
         'matched_cluster',
         'cluster0_deviation',
         'cluster1_deviation',
@@ -146,6 +148,7 @@ class CsvExportService {
     required bool includeDriverColumns,
   }) async {
     final headers = <String>[
+      'csv_row_number',
       if (includeDriverColumns) ...['driver_username', 'bus_number'],
       'trip_id',
       'segment_index',
@@ -160,6 +163,7 @@ class CsvExportService {
       'end_lon',
       'nearest_landmark',
       'sample_count',
+      'is_valid',
       ...featureColumns,
     ];
 
@@ -180,9 +184,14 @@ class CsvExportService {
     final buffer = StringBuffer();
     buffer.writeln(headers.join(','));
 
-    for (final row in rows) {
+    for (var index = 0; index < rows.length; index++) {
+      final row = rows[index];
       final values = <String>[];
       for (final header in headers) {
+        if (header == 'csv_row_number') {
+          values.add((index + 1).toString());
+          continue;
+        }
         values.add(_csvEscape(_extractValue(header, row)));
       }
       buffer.writeln(values.join(','));

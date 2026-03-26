@@ -745,6 +745,7 @@ class DbHelper {
         s.id AS segment_id,
         s.trip_id,
         s.mode,
+        s.is_valid,
         s.segment_index,
         s.start_time,
         s.end_time,
@@ -764,6 +765,7 @@ class DbHelper {
             AND r.timestamp <= s.end_time
         ) AS sample_count
       FROM segments s
+      -- Return all segments for the trip (valid and invalid)
       WHERE s.trip_id = ?$whereMode
       ORDER BY s.segment_index ASC
     ''', args);

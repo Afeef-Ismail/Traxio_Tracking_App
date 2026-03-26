@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
@@ -23,12 +24,18 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _sessionTimer;
+  bool _pendingStartTripAfterLocationSettings = false;
+
+  static const String _locationServiceDialogTitle = 'Location Service Disabled';
+  static const String _locationServiceDialogMessage =
+      'GPS must be enabled to record a trip. Please turn on Location in your device settings.';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Check session timeout every 5 minutes
     _sessionTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       final auth = context.read<AuthProvider>();
@@ -40,12 +47,85 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sessionTimer?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _handleLocationResumeForPendingTripStart();
+    }
+  }
+
   void _updateActivity() {
     context.read<AuthProvider>().updateActivity();
+  }
+
+  Future<void> _handleLocationResumeForPendingTripStart() async {
+    if (!_pendingStartTripAfterLocationSettings || !mounted) return;
+
+    final provider = context.read<TripProvider>();
+    if (provider.state != TripState.idle) {
+      _pendingStartTripAfterLocationSettings = false;
+      return;
+    }
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled || !mounted) return;
+
+    _pendingStartTripAfterLocationSettings = false;
+    await provider.startTrip();
+    if (!mounted) return;
+    if (provider.state == TripState.recording) {
+      Navigator.of(context).pushReplacementNamed('/trip');
+    }
+  }
+
+  Future<bool> _ensureLocationServiceEnabledForTripStart() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (serviceEnabled) return true;
+
+    if (!mounted) return false;
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(_locationServiceDialogTitle),
+        content: const Text(_locationServiceDialogMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('open_settings'),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == 'open_settings') {
+      _pendingStartTripAfterLocationSettings = true;
+      await Geolocator.openLocationSettings();
+    }
+
+    return false;
+  }
+
+  Future<void> _onStartTripPressed(TripProvider provider) async {
+    _updateActivity();
+    final serviceEnabled = await _ensureLocationServiceEnabledForTripStart();
+    if (!serviceEnabled || !mounted) return;
+
+    _pendingStartTripAfterLocationSettings = false;
+    await provider.startTrip();
+    if (!mounted) return;
+    if (provider.state == TripState.recording) {
+      Navigator.of(context).pushReplacementNamed('/trip');
+    }
   }
 
   @override
@@ -216,14 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.play_arrow_rounded,
                 loading: provider.state == TripState.calibrating,
                 onPressed: provider.state == TripState.idle
-                    ? () async {
-                        _updateActivity();
-                        await provider.startTrip();
-                        if (!mounted) return;
-                        if (provider.state == TripState.recording) {
-                          Navigator.of(context).pushReplacementNamed('/trip');
-                        }
-                      }
+                    ? () => _onStartTripPressed(provider)
                     : null,
               ),
             ],

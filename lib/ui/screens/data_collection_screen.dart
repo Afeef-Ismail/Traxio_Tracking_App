@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../database/db_helper.dart';
@@ -29,6 +30,10 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   bool _starting = false;
   String? _exportingTripId;
   List<DataCollectionTrip> _recentTrips = [];
+
+  static const String _locationServiceDialogTitle = 'Location Service Disabled';
+  static const String _locationServiceDialogMessage =
+      'GPS must be enabled to record a trip. Please turn on Location in your device settings.';
 
   @override
   void initState() {
@@ -75,10 +80,44 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   }
 
   Future<void> _startCollection() async {
+    final serviceEnabled = await _ensureLocationServiceEnabledForCollectionStart();
+    if (!serviceEnabled || !mounted) return;
+
     setState(() => _starting = true);
     await context.read<TripProvider>().startCollectionTrip(_segmentDistanceM);
     if (!mounted) return;
     setState(() => _starting = false);
+  }
+
+  Future<bool> _ensureLocationServiceEnabledForCollectionStart() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (serviceEnabled) return true;
+
+    if (!mounted) return false;
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(_locationServiceDialogTitle),
+        content: const Text(_locationServiceDialogMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('open_settings'),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == 'open_settings') {
+      await Geolocator.openLocationSettings();
+    }
+
+    return false;
   }
 
   Future<void> _stopCollection() async {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/constants.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/language_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../theme/app_colors.dart';
 
@@ -56,13 +58,28 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Invalid username or password';
+        _errorMessage =
+          Localizations.of<AppLocalizations>(context, AppLocalizations)
+              ?.invalidCredentials ??
+            'Invalid username or password';
       });
+    }
+  }
+
+  Future<void> _setLanguage(String code) async {
+    try {
+      await context.read<LanguageProvider>().setLanguage(code);
+    } catch (_) {
+      // Ignore when LanguageProvider is not available (e.g., isolated widget tests)
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n =
+      Localizations.of<AppLocalizations>(context, AppLocalizations);
+    final currentLanguageCode =
+      Localizations.maybeLocaleOf(context)?.languageCode ?? 'en';
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -111,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Driver Benchmarking System',
+                  l10n?.appName ?? 'Driver Benchmarking System',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w400,
@@ -133,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _usernameController,
                         textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
-                          labelText: 'Username',
+                          labelText: l10n?.username ?? 'Username',
                           prefixIcon: const Icon(Icons.person_outline),
                           filled: true,
                           fillColor: isDark
@@ -165,7 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your username';
+                            return l10n?.username ?? 'Username';
                           }
                           return null;
                         },
@@ -179,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         textInputAction: TextInputAction.done,
                         onFieldSubmitted: (_) => _handleLogin(),
                         decoration: InputDecoration(
-                          labelText: 'Password',
+                          labelText: l10n?.password ?? 'Password',
                           prefixIcon: const Icon(Icons.lock_outline),
                           suffixIcon: IconButton(
                             icon: Icon(
@@ -223,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter your password';
+                            return l10n?.password ?? 'Password';
                           }
                           return null;
                         },
@@ -258,6 +275,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       const SizedBox(height: 8),
 
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _LanguageButton(
+                            label: l10n?.english ?? 'English',
+                            selected: currentLanguageCode == 'en',
+                            onTap: () => _setLanguage('en'),
+                          ),
+                          const SizedBox(width: 8),
+                          _LanguageButton(
+                            label: 'മലയാളം',
+                            selected: currentLanguageCode == 'ml',
+                            onTap: () => _setLanguage('ml'),
+                          ),
+                          const SizedBox(width: 8),
+                          _LanguageButton(
+                            label: 'हिन्दी',
+                            selected: currentLanguageCode == 'hi',
+                            onTap: () => _setLanguage('hi'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
                       // ─── Login Button ──────────────────────────────
                       SizedBox(
                         height: 56,
@@ -280,9 +321,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Text(
-                                  'Login',
-                                  style: TextStyle(
+                              : Text(
+                                  l10n?.login ?? 'Login',
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -387,6 +428,35 @@ class _DeveloperQuickLoginButtons extends StatelessWidget {
         ),
       ),
       child: Text(label),
+    );
+  }
+}
+
+class _LanguageButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _LanguageButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: selected ? AppColors.primary : Colors.grey,
+        visualDensity: VisualDensity.compact,
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
     );
   }
 }

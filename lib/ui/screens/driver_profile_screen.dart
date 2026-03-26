@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../database/db_helper.dart';
 import '../../models/trip_model.dart';
@@ -47,11 +48,12 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Driver Profile'),
+        title: Text(l10n.driverProfile),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
@@ -66,15 +68,15 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   children: [
                     _buildProfileHeader(isDark),
                     const SizedBox(height: 20),
-                    _buildStatsGrid(isDark),
+                    _buildStatsGrid(isDark, l10n),
                     const SizedBox(height: 20),
                     _buildScoreHistory(isDark),
                     const SizedBox(height: 20),
-                    _buildLatestAiCoaching(isDark),
+                    _buildLatestAiCoaching(isDark, l10n),
                     const SizedBox(height: 20),
-                    _buildTerrainBreakdown(isDark),
+                    _buildTerrainBreakdown(isDark, l10n),
                     const SizedBox(height: 20),
-                    _buildRecentTrips(isDark),
+                    _buildRecentTrips(isDark, l10n),
                   ],
                 ),
               ),
@@ -130,7 +132,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Widget _buildStatsGrid(bool isDark) {
+  Widget _buildStatsGrid(bool isDark, AppLocalizations l10n) {
     final totalTrips = _trips.length;
     final totalSegments =
         _trips.fold<int>(0, (s, t) => s + t.validSegments);
@@ -156,13 +158,13 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Performance Overview', isDark),
+        _sectionTitle(l10n.overall, isDark),
         const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: _statCard(
-                'Total Trips',
+                l10n.totalTrips,
                 '$totalTrips',
                 Icons.route_rounded,
                 AppColors.primary,
@@ -172,7 +174,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: _statCard(
-                'Segments',
+                l10n.segments,
                 '$totalSegments',
                 Icons.grid_view_rounded,
                 AppColors.terrainDownhill,
@@ -186,7 +188,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           children: [
             Expanded(
               child: _statCard(
-                'Avg Deviation',
+                l10n.averageDeviation,
                 avgDev.toStringAsFixed(2),
                 Icons.analytics_rounded,
                 _deviationColor(avgDev),
@@ -196,7 +198,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: _statCard(
-                'Best Trip',
+                l10n.bestTerrain,
                 bestDev.toStringAsFixed(2),
                 Icons.emoji_events_rounded,
                 AppColors.success,
@@ -207,7 +209,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         ),
         const SizedBox(height: 12),
         _statCard(
-          'Worst Trip Deviation',
+          l10n.worstTerrain,
           worstDev.toStringAsFixed(2),
           Icons.warning_rounded,
           AppColors.alert,
@@ -229,7 +231,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Widget _buildLatestAiCoaching(bool isDark) {
+  Widget _buildLatestAiCoaching(bool isDark, AppLocalizations l10n) {
     // Find the most recent trip with a cached coaching report
     String? cachedReport;
     for (final trip in _trips) {
@@ -246,7 +248,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Latest AI Coaching', isDark),
+        _sectionTitle(l10n.aiCoach, isDark),
         const SizedBox(height: 10),
         Container(
           width: double.infinity,
@@ -294,7 +296,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Widget _buildTerrainBreakdown(bool isDark) {
+  Widget _buildTerrainBreakdown(bool isDark, AppLocalizations l10n) {
     int totalPlain = 0, totalUphill = 0, totalDownhill = 0;
     double sumDevPlain = 0, sumDevUphill = 0, sumDevDownhill = 0;
     int countPlain = 0, countUphill = 0, countDownhill = 0;
@@ -325,21 +327,21 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Terrain Breakdown', isDark),
+        _sectionTitle(l10n.terrain, isDark),
         const SizedBox(height: 10),
-        _terrainRow('Plain', totalPlain, avgPlain,
+        _terrainRow(l10n.plain, totalPlain, avgPlain,
             AppColors.terrainPlain, isDark),
         const SizedBox(height: 8),
-        _terrainRow('Uphill', totalUphill, avgUphill,
+        _terrainRow(l10n.uphill, totalUphill, avgUphill,
             AppColors.terrainUphill, isDark),
         const SizedBox(height: 8),
-        _terrainRow('Downhill', totalDownhill, avgDownhill,
+        _terrainRow(l10n.downhill, totalDownhill, avgDownhill,
             AppColors.terrainDownhill, isDark),
       ],
     );
   }
 
-  Widget _buildRecentTrips(bool isDark) {
+  Widget _buildRecentTrips(bool isDark, AppLocalizations l10n) {
     if (_trips.isEmpty) {
       return Container(
         width: double.infinity,
@@ -354,7 +356,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 size: 48, color: AppColors.textMuted),
             const SizedBox(height: 8),
             Text(
-              'No trips recorded yet',
+              l10n.noTripsYet,
               style: TextStyle(
                 color: isDark
                     ? AppColors.textOnDarkSecondary
@@ -370,7 +372,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Recent Trips', isDark),
+        _sectionTitle(l10n.tripHistory, isDark),
         const SizedBox(height: 10),
         ...recent.map((trip) => _recentTripTile(trip, isDark)),
       ],

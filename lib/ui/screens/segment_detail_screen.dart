@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../widgets/segment_feature_table.dart';
 import '../widgets/terrain_badge.dart';
 import '../widgets/summary_card.dart';
@@ -73,9 +74,10 @@ class _SegmentDetailScreenState extends State<SegmentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: Text('Segment ${widget.segmentIndex}')),
+        appBar: AppBar(title: Text('${l10n.segments} ${widget.segmentIndex}')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -104,7 +106,7 @@ class _SegmentDetailScreenState extends State<SegmentDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Segment ${widget.segmentIndex}'),
+        title: Text('${l10n.segments} ${widget.segmentIndex}'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
@@ -136,7 +138,7 @@ class _SegmentDetailScreenState extends State<SegmentDetailScreen> {
                     child: Column(
                       children: [
                         Text(
-                          'Cluster ${widget.matchedCluster}',
+                          '${l10n.cluster} ${widget.matchedCluster}',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -175,9 +177,9 @@ class _SegmentDetailScreenState extends State<SegmentDetailScreen> {
                 children: [
                   Expanded(
                     child: SummaryCard(
-                      title: 'Matched Deviation',
+                      title: l10n.matchedCluster,
                       value: matchedDev.toStringAsFixed(2),
-                      subtitle: 'Cluster ${widget.matchedCluster}',
+                      subtitle: '${l10n.cluster} ${widget.matchedCluster}',
                       accentColor: matchedDev < 5.0
                           ? AppColors.success
                           : (matchedDev < 15.0
@@ -214,7 +216,7 @@ class _SegmentDetailScreenState extends State<SegmentDetailScreen> {
 
               // ─── Feature Table ─────────────────────────────────────
               Text(
-                'Benchmark Features',
+                l10n.benchmarkRange,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -231,7 +233,7 @@ class _SegmentDetailScreenState extends State<SegmentDetailScreen> {
 
               // ─── Simple Deviation Bar ──────────────────────────────
               Text(
-                'Deviation Comparison',
+                l10n.deviation,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,

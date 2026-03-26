@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/constants.dart';
 import '../models/trip_model.dart';
 import '../providers/trip_provider.dart';
@@ -45,7 +46,14 @@ class GeminiCoachingService {
     List<SegmentDetail> segments,
   ) async {
     try {
-      final prompt = _buildPrompt(summary, segments);
+      final prefs = await SharedPreferences.getInstance();
+      final code = prefs.getString('language_code') ?? 'en';
+      final languageInstruction = switch (code) {
+        'ml' => 'Respond entirely in Malayalam (മലയാളം). Use simple everyday Malayalam that a bus driver can easily understand.',
+        'hi' => 'Respond entirely in Hindi (हिन्दी). Use simple everyday Hindi that a bus driver can easily understand.',
+        _ => 'Respond in English.',
+      };
+      final prompt = '$languageInstruction\n\n${_buildPrompt(summary, segments)}';
       final apiKey = AppConstants.geminiApiKey;
       final url = Uri.parse(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey',

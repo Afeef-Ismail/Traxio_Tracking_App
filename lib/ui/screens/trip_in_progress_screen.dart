@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../widgets/map_widget.dart';
@@ -71,6 +72,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final provider = context.watch<TripProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final distanceKm = provider.currentDistance / 1000.0;
@@ -133,8 +135,8 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                           const SizedBox(width: 6),
                           Text(
                             provider.state == TripState.recording
-                                ? 'RECORDING'
-                                : 'PROCESSING...',
+                                ? l10n.recording
+                                : l10n.processing,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -167,7 +169,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                         ),
                       ),
                       child: Text(
-                        '${provider.segmentsCompleted} segments',
+                        '${provider.segmentsCompleted} ${l10n.segments.toLowerCase()}',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -230,7 +232,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  'Cluster ${provider.lastMatchedCluster}',
+                                  '${l10n.cluster} ${provider.lastMatchedCluster}',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
@@ -250,7 +252,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                       children: [
                         Expanded(
                           child: StatCard(
-                            label: 'Distance',
+                            label: l10n.distance,
                             value: distanceKm.toStringAsFixed(1),
                             unit: 'km',
                             icon: Icons.straighten_rounded,
@@ -259,7 +261,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: StatCard(
-                            label: 'Elapsed',
+                            label: l10n.elapsed,
                             value: _formatDuration(_elapsed),
                             icon: Icons.timer_outlined,
                           ),
@@ -267,7 +269,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: StatCard(
-                            label: 'Deviation',
+                            label: l10n.deviation,
                             value: provider.lastDeviation > 0
                                 ? provider.lastDeviation.toStringAsFixed(1)
                                 : '—',
@@ -280,7 +282,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
 
                     // ─── Stop Button ─────────────────────────────────
                     PrimaryButton(
-                      label: 'Stop Trip',
+                      label: l10n.stopTrip,
                       icon: Icons.stop_rounded,
                       color: AppColors.alert,
                       loading: provider.state == TripState.processing,

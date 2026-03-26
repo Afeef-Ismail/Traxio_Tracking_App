@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
 import '../../analytics/coaching_engine.dart';
@@ -36,16 +37,17 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
   }
 
   Future<void> _exportTripCsv() async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _exporting = true);
     try {
       final path = await _csvExportService.exportBenchmarkTripCSV(widget.tripId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved to Downloads: ksrtc_benchmark_${widget.tripId}.csv'),
+          content: Text('${l10n.csvSaved}: ksrtc_benchmark_${widget.tripId}.csv'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
-            label: 'Share',
+            label: l10n.shareCSV,
             onPressed: () => Share.shareXFiles([XFile(path)]),
           ),
         ),
@@ -94,18 +96,19 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Coaching Report'),
+        title: Text(l10n.coachingReport),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
           IconButton(
-            tooltip: 'Export CSV',
+            tooltip: l10n.exportCSV,
             onPressed: _loading || _exporting ? null : _exportTripCsv,
             icon: _exporting
                 ? const SizedBox(
@@ -142,7 +145,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Trip not found',
+            AppLocalizations.of(context)!.tripNotFound,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w500,
@@ -191,7 +194,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
           ],
 
           // ─── Trip Metadata ───────────────────────────────────────
-          _SectionTitle('Trip Information', isDark: isDark),
+          _SectionTitle(AppLocalizations.of(context)!.tripInformation, isDark: isDark),
           const SizedBox(height: 10),
           _InfoRow('Date', dateStr, isDark: isDark),
           _InfoRow('Time', timeStr, isDark: isDark),
@@ -222,7 +225,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
           const SizedBox(height: 24),
 
           // ─── AI Coach (cached from DB) ───────────────────────────
-          _SectionTitle('AI Coach', isDark: isDark),
+          _SectionTitle(AppLocalizations.of(context)!.aiCoach, isDark: isDark),
           const SizedBox(height: 10),
           if (summary.coachingReport.isNotEmpty)
             _AiCoachCard(report: summary.coachingReport, isDark: isDark)
@@ -231,7 +234,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
           const SizedBox(height: 20),
 
           // ─── Rule-Based Coaching Cards ───────────────────────────
-          _SectionTitle('Coaching Insights', isDark: isDark),
+          _SectionTitle(AppLocalizations.of(context)!.coachingReport, isDark: isDark),
           const SizedBox(height: 10),
           ..._insights.map(
               (insight) => _CoachingCard(insight: insight, isDark: isDark)),
@@ -239,7 +242,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
 
           // ─── Worst Segment Card ──────────────────────────────────
           if (worstSeg != null && worstDev > 10.0) ...[
-            _SectionTitle('Worst Segment', isDark: isDark),
+            _SectionTitle(AppLocalizations.of(context)!.worstSegment, isDark: isDark),
             const SizedBox(height: 10),
             _WorstSegmentCard(
               segment: worstSeg,

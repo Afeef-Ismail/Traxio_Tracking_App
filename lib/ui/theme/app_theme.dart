@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 /// App-wide theme configuration for Light and Dark modes.
@@ -16,6 +17,9 @@ class AppTheme {
   // ═══════════════════════════════════════════════════════════════════
   static ThemeData get light {
     return ThemeData(
+      textTheme: GoogleFonts.notoSansTextTheme(
+        _textTheme(AppColors.textPrimary, AppColors.textSecondary),
+      ),
       useMaterial3: true,
       brightness: Brightness.light,
       scaffoldBackgroundColor: AppColors.lightBackground,
@@ -50,7 +54,7 @@ class AppTheme {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
       dividerColor: AppColors.dividerLight,
-      textTheme: _textTheme(AppColors.textPrimary, AppColors.textSecondary),
+      fontFamily: GoogleFonts.notoSans().fontFamily,
       iconTheme: const IconThemeData(color: AppColors.textSecondary),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -88,6 +92,9 @@ class AppTheme {
   // ═══════════════════════════════════════════════════════════════════
   static ThemeData get dark {
     return ThemeData(
+      textTheme: GoogleFonts.notoSansTextTheme(
+        _textTheme(AppColors.textOnDark, AppColors.textOnDarkSecondary),
+      ),
       useMaterial3: true,
       brightness: Brightness.dark,
       scaffoldBackgroundColor: AppColors.darkBackground,
@@ -122,7 +129,7 @@ class AppTheme {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
       dividerColor: AppColors.dividerDark,
-      textTheme: _textTheme(AppColors.textOnDark, AppColors.textOnDarkSecondary),
+      fontFamily: GoogleFonts.notoSans().fontFamily,
       iconTheme: const IconThemeData(color: AppColors.textOnDarkSecondary),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

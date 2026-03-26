@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../database/db_helper.dart';
 import '../../models/trip_model.dart';
 import '../../providers/auth_provider.dart';
@@ -30,10 +31,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   bool _starting = false;
   String? _exportingTripId;
   List<DataCollectionTrip> _recentTrips = [];
-
-  static const String _locationServiceDialogTitle = 'Location Service Disabled';
-  static const String _locationServiceDialogMessage =
-      'GPS must be enabled to record a trip. Please turn on Location in your device settings.';
 
   @override
   void initState() {
@@ -97,20 +94,23 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
     final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(_locationServiceDialogTitle),
-        content: const Text(_locationServiceDialogMessage),
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+        title: Text(l10n.locationServiceDisabled),
+        content: Text(l10n.locationServiceMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop('cancel'),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop('open_settings'),
-            child: const Text('Open Settings'),
+            child: Text(l10n.openSettings),
           ),
         ],
-      ),
+      );
+      },
     );
 
     if (action == 'open_settings') {
@@ -126,16 +126,17 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   }
 
   Future<void> _exportTrip(String tripId) async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _exportingTripId = tripId);
     try {
       final path = await _csvExportService.exportTripCSV(tripId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved to Downloads: ksrtc_collection_$tripId.csv'),
+          content: Text('${l10n.csvSaved}: ksrtc_collection_$tripId.csv'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
-            label: 'Share',
+            label: l10n.shareCSV,
             onPressed: () {
               Share.shareXFiles([XFile(path)]);
             },
@@ -146,7 +147,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Export failed: $e'),
+          content: Text('${l10n.exportFailed}: $e'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -159,6 +160,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final provider = context.watch<TripProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -169,11 +171,11 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     final recording = provider.isCollectionMode && provider.state == TripState.recording;
 
     return recording
-        ? _buildRecordingState(provider, isDark)
-        : _buildIdleState(isDark);
+          ? _buildRecordingState(provider, isDark, l10n)
+          : _buildIdleState(isDark, l10n);
   }
 
-  Widget _buildIdleState(bool isDark) {
+  Widget _buildIdleState(bool isDark, AppLocalizations l10n) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -190,7 +192,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Segment Distance',
+                l10n.segmentDistance,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -220,7 +222,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
         ),
         const SizedBox(height: 14),
         PrimaryButton(
-          label: 'Start Data Collection',
+          label: l10n.startCollection,
           icon: Icons.play_arrow_rounded,
           color: AppColors.success,
           loading: _starting,
@@ -228,7 +230,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
         ),
         const SizedBox(height: 22),
         Text(
-          'Recent Collection Trips',
+          l10n.dataCollection,
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w600,
@@ -247,7 +249,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
               ),
             ),
             child: Text(
-              'No collection trips yet.',
+              l10n.noTripsYet,
               style: TextStyle(
                 color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
               ),
@@ -308,7 +310,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.download_rounded),
-                      label: const Text('Export CSV'),
+                      label: Text(l10n.exportCSV),
                     ),
                   ),
                 ],
@@ -319,7 +321,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     );
   }
 
-  Widget _buildRecordingState(TripProvider provider, bool isDark) {
+  Widget _buildRecordingState(
+      TripProvider provider, bool isDark, AppLocalizations l10n) {
     final nearest = _nearestLandmarkLabel(provider);
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -383,7 +386,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Nearest Landmark',
+                        l10n.nearestLandmark,
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? AppColors.textOnDarkSecondary : AppColors.textMuted,
@@ -400,7 +403,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Segments: ${provider.segmentsCompleted}',
+                        '${l10n.segments}: ${provider.segmentsCompleted}',
                         style: TextStyle(
                           fontSize: 15,
                           color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
@@ -411,7 +414,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                 ),
                 const Spacer(),
                 PrimaryButton(
-                  label: 'Stop Collection',
+                  label: l10n.stopCollection,
                   icon: Icons.stop_rounded,
                   color: AppColors.alert,
                   onPressed:

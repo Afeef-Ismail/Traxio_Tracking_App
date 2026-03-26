@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
 import '../../analytics/score_calculator.dart';
@@ -43,16 +44,17 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
   }
 
   Future<void> _exportTripCsv(String tripId) async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _exportingTripId = tripId);
     try {
       final path = await _csvExportService.exportBenchmarkTripCSV(tripId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved to Downloads: ksrtc_benchmark_$tripId.csv'),
+          content: Text('${l10n.csvSaved}: ksrtc_benchmark_$tripId.csv'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
-            label: 'Share',
+            label: l10n.shareCSV,
             onPressed: () => Share.shareXFiles([XFile(path)]),
           ),
         ),
@@ -74,11 +76,12 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Trip History'),
+        title: Text(l10n.tripHistory),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
@@ -88,13 +91,13 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _trips.isEmpty
-                ? _buildEmptyState(isDark)
-                : _buildTripList(isDark),
+                ? _buildEmptyState(isDark, l10n)
+                : _buildTripList(isDark, l10n),
       ),
     );
   }
 
-  Widget _buildEmptyState(bool isDark) {
+  Widget _buildEmptyState(bool isDark, AppLocalizations l10n) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -108,7 +111,7 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No trips recorded yet',
+            l10n.noTripsYet,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w500,
@@ -119,7 +122,7 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Start a trip from the home screen',
+            l10n.startFromHome,
             style: TextStyle(
               fontSize: 14,
               color: isDark
@@ -132,7 +135,7 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
     );
   }
 
-  Widget _buildTripList(bool isDark) {
+  Widget _buildTripList(bool isDark, AppLocalizations l10n) {
     return RefreshIndicator(
       onRefresh: _loadTrips,
       child: ListView.builder(
@@ -149,21 +152,21 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
               final confirmed = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  title: const Text('Delete Trip?'),
+                  title: Text('${l10n.delete} ${l10n.startTrip}?'),
                   content: const Text(
                     'This will permanently delete all trip data including segments and features.',
                   ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(ctx).pop(false),
-                      child: const Text('Cancel'),
+                      child: Text(l10n.cancel),
                     ),
                     TextButton(
                       onPressed: () => Navigator.of(ctx).pop(true),
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.alert,
                       ),
-                      child: const Text('Delete'),
+                      child: Text(l10n.delete),
                     ),
                   ],
                 ),
@@ -175,6 +178,7 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
               }
             },
             onExportCsv: () => _exportTripCsv(trip.tripId),
+            l10n: l10n,
           );
         },
       ),
@@ -188,6 +192,7 @@ class _TripCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onExportCsv;
   final bool exporting;
+  final AppLocalizations l10n;
 
   const _TripCard({
     required this.trip,
@@ -195,6 +200,7 @@ class _TripCard extends StatelessWidget {
     required this.onDelete,
     required this.onExportCsv,
     required this.exporting,
+    required this.l10n,
   });
 
   @override
@@ -292,19 +298,19 @@ class _TripCard extends StatelessWidget {
                 Row(
                   children: [
                     _MiniStat(
-                      'Deviation',
+                      l10n.deviation,
                       trip.overallAvgDeviation.toStringAsFixed(2),
                       isDark: isDark,
                     ),
                     const SizedBox(width: 16),
                     _MiniStat(
-                      'Segments',
+                      l10n.segments,
                       '${trip.validSegments}',
                       isDark: isDark,
                     ),
                     const SizedBox(width: 16),
                     _MiniStat(
-                      'Duration',
+                      l10n.duration,
                       _formatDuration(duration),
                       isDark: isDark,
                     ),
@@ -316,14 +322,14 @@ class _TripCard extends StatelessWidget {
                 Row(
                   children: [
                     if (trip.plainSegments > 0)
-                      _TerrainChip('Plain', trip.plainSegments),
+                      _TerrainChip(l10n.plain, trip.plainSegments),
                     if (trip.uphillSegments > 0) ...[
                       const SizedBox(width: 6),
-                      _TerrainChip('Uphill', trip.uphillSegments),
+                      _TerrainChip(l10n.uphill, trip.uphillSegments),
                     ],
                     if (trip.downhillSegments > 0) ...[
                       const SizedBox(width: 6),
-                      _TerrainChip('Downhill', trip.downhillSegments),
+                      _TerrainChip(l10n.downhill, trip.downhillSegments),
                     ],
                   ],
                 ),
@@ -339,7 +345,7 @@ class _TripCard extends StatelessWidget {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.download_rounded, size: 16),
-                    label: const Text('Export CSV'),
+                    label: Text(l10n.exportCSV),
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                     ),

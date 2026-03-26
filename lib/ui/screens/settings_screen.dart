@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/language_provider.dart';
 import '../widgets/buttons.dart';
 import '../theme/app_colors.dart';
 
@@ -42,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveSettings() async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _saving = true);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('slope_threshold', _slopeThreshold);
@@ -50,8 +53,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Settings saved'),
+        SnackBar(
+          content: Text(l10n.settingsSaved),
           duration: Duration(seconds: 1),
         ),
       );
@@ -60,11 +63,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = context.watch<LanguageProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(l10n.settings),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
@@ -211,7 +216,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             // ─── Appearance ──────────────────────────────────────────
             _SettingSection(
-              title: 'Appearance',
+              title: l10n.appearance,
               isDark: isDark,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -220,7 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Dark Mode',
+                        l10n.darkMode,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
@@ -254,9 +259,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
+            _SettingSection(
+              title: l10n.language,
+              isDark: isDark,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _languageOption(
+                    context,
+                    code: 'en',
+                    label: l10n.english,
+                    selected: languageProvider.locale.languageCode == 'en',
+                  ),
+                  _languageOption(
+                    context,
+                    code: 'ml',
+                    label: 'മലയാളം',
+                    selected: languageProvider.locale.languageCode == 'ml',
+                  ),
+                  _languageOption(
+                    context,
+                    code: 'hi',
+                    label: 'हिन्दी',
+                    selected: languageProvider.locale.languageCode == 'hi',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
             // ─── Save Button ─────────────────────────────────────────
             PrimaryButton(
-              label: 'Save Settings',
+              label: l10n.saveSettings,
               icon: Icons.save_rounded,
               loading: _saving,
               onPressed: _saveSettings,
@@ -265,7 +299,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             // ─── Logout ──────────────────────────────────────────────
             _SettingSection(
-              title: 'Account',
+              title: l10n.account,
               isDark: isDark,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,7 +324,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             .pushNamedAndRemoveUntil('/login', (_) => false);
                       },
                       icon: const Icon(Icons.logout_rounded, size: 20),
-                      label: const Text('Logout'),
+                      label: Text(l10n.logout),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.alert,
                         side: BorderSide(
@@ -337,6 +371,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _languageOption(
+    BuildContext context, {
+    required String code,
+    required String label,
+    required bool selected,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      title: Text(label),
+      trailing: selected
+          ? const Icon(Icons.check_rounded, color: AppColors.primary)
+          : null,
+      onTap: () => context.read<LanguageProvider>().setLanguage(code),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/trip_provider.dart';
 import '../theme/app_colors.dart';
 import '../widgets/terrain_badge.dart';
@@ -40,11 +41,12 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Segment Analysis'),
+        title: Text(l10n.segmentAnalysis),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
@@ -54,13 +56,13 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _segments.isEmpty
-                ? _buildEmptyState(isDark)
-                : _buildSegmentList(isDark),
+                ? _buildEmptyState(isDark, l10n)
+                : _buildSegmentList(isDark, l10n),
       ),
     );
   }
 
-  Widget _buildEmptyState(bool isDark) {
+  Widget _buildEmptyState(bool isDark, AppLocalizations l10n) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -74,7 +76,7 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No valid segments found',
+            l10n.noValidSegments,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w500,
@@ -88,7 +90,7 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
     );
   }
 
-  Widget _buildSegmentList(bool isDark) {
+  Widget _buildSegmentList(bool isDark, AppLocalizations l10n) {
     // Find worst segment index (highest matched deviation)
     int worstIndex = 0;
     double worstDev = -1;
@@ -203,7 +205,7 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
                                 const SizedBox(width: 8),
                               ],
                               Text(
-                                'Cluster ${seg.matchedCluster}',
+                                '${l10n.cluster} ${seg.matchedCluster}',
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w500,
@@ -216,7 +218,7 @@ class _SegmentListScreenState extends State<SegmentListScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Deviation: ${matchedDev.toStringAsFixed(2)}',
+                            '${l10n.deviation}: ${matchedDev.toStringAsFixed(2)}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,

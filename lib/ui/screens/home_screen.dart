@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../widgets/map_widget.dart';
@@ -27,10 +28,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _sessionTimer;
   bool _pendingStartTripAfterLocationSettings = false;
-
-  static const String _locationServiceDialogTitle = 'Location Service Disabled';
-  static const String _locationServiceDialogMessage =
-      'GPS must be enabled to record a trip. Please turn on Location in your device settings.';
 
   @override
   void initState() {
@@ -91,20 +88,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(_locationServiceDialogTitle),
-        content: const Text(_locationServiceDialogMessage),
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(l10n.locationServiceDisabled),
+          content: Text(l10n.locationServiceMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop('cancel'),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop('open_settings'),
-            child: const Text('Open Settings'),
+            child: Text(l10n.openSettings),
           ),
         ],
-      ),
+      );
+      },
     );
 
     if (action == 'open_settings') {
@@ -130,6 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final provider = context.watch<TripProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -153,16 +154,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   labelColor: AppColors.primary,
                   unselectedLabelColor:
                       isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
-                  tabs: const [
-                    Tab(text: 'Benchmark'),
-                    Tab(text: 'Data Collection'),
+                  tabs: [
+                    Tab(text: l10n.benchmark),
+                    Tab(text: l10n.dataCollection),
                   ],
                 ),
               ),
               Expanded(
                 child: TabBarView(
                   children: [
-                    _buildBenchmarkTab(provider, isDark),
+                    _buildBenchmarkTab(provider, isDark, l10n),
                     const DataCollectionScreen(),
                   ],
                 ),
@@ -174,7 +175,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildBenchmarkTab(TripProvider provider, bool isDark) {
+  Widget _buildBenchmarkTab(
+      TripProvider provider, bool isDark, AppLocalizations l10n) {
     return Column(
       children: [
         Container(
@@ -191,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'KSRTC Benchmarking',
+                    l10n.appName,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -212,7 +214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ? AppColors.textOnDarkSecondary
                           : AppColors.textSecondary,
                     ),
-                    tooltip: 'Profile',
+                    tooltip: l10n.driverProfile,
                   ),
                   IconButton(
                     onPressed: () {
@@ -224,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ? AppColors.textOnDarkSecondary
                           : AppColors.textSecondary,
                     ),
-                    tooltip: 'Trip History',
+                    tooltip: l10n.tripHistory,
                   ),
                   IconButton(
                     onPressed: () {
@@ -236,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ? AppColors.textOnDarkSecondary
                           : AppColors.textSecondary,
                     ),
-                    tooltip: 'Settings',
+                    tooltip: l10n.settings,
                   ),
                 ],
               ),
@@ -292,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 20),
               PrimaryButton(
-                label: 'Start Trip',
+                label: l10n.startTrip,
                 icon: Icons.play_arrow_rounded,
                 loading: provider.state == TripState.calibrating,
                 onPressed: provider.state == TripState.idle

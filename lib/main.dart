@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
+import 'providers/language_provider.dart';
 import 'providers/trip_provider.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/screens/splash_screen.dart';
@@ -16,8 +19,11 @@ import 'ui/screens/settings_screen.dart';
 import 'ui/screens/driver_profile_screen.dart';
 import 'ui/widgets/admin_guard.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final languageProvider = LanguageProvider();
+  await languageProvider.loadSavedLanguage();
 
   // Lock to portrait orientation (phone is mounted on dashboard)
   SystemChrome.setPreferredOrientations([
@@ -27,11 +33,13 @@ void main() {
   // Keep screen on during trips
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  runApp(const KsrtcApp());
+  runApp(KsrtcApp(languageProvider: languageProvider));
 }
 
 class KsrtcApp extends StatefulWidget {
-  const KsrtcApp({super.key});
+  final LanguageProvider languageProvider;
+
+  const KsrtcApp({super.key, required this.languageProvider});
 
   @override
   State<KsrtcApp> createState() => _KsrtcAppState();
@@ -72,26 +80,43 @@ class _KsrtcAppState extends State<KsrtcApp> {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => TripProvider()),
+        ChangeNotifierProvider.value(value: widget.languageProvider),
       ],
-      child: MaterialApp(
-        title: 'KSRTC Benchmarking',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: _themeMode,
-        initialRoute: '/',
-        routes: {
-          '/': (_) => const SplashScreen(),
-          '/login': (_) => const LoginScreen(),
-          '/home': (_) => const HomeScreen(),
-          '/admin': (_) => const AdminGuard(child: AdminHomeScreen()),
-          '/trip': (_) => const TripInProgressScreen(),
-          '/summary': (_) => const TripSummaryScreen(),
-          '/history': (_) => const TripHistoryScreen(),
-          '/profile': (_) => const DriverProfileScreen(),
-          '/settings': (_) => SettingsScreen(
-                onDarkModeChanged: _setDarkMode,
-              ),
+      child: Consumer<LanguageProvider>(
+        builder: (context, languageProvider, child) {
+          return MaterialApp(
+            title: 'KSRTC Benchmarking',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
+            themeMode: _themeMode,
+            locale: languageProvider.locale,
+            supportedLocales: const [
+              Locale('en'),
+              Locale('ml'),
+              Locale('hi'),
+            ],
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            initialRoute: '/',
+            routes: {
+              '/': (_) => const SplashScreen(),
+              '/login': (_) => const LoginScreen(),
+              '/home': (_) => const HomeScreen(),
+              '/admin': (_) => const AdminGuard(child: AdminHomeScreen()),
+              '/trip': (_) => const TripInProgressScreen(),
+              '/summary': (_) => const TripSummaryScreen(),
+              '/history': (_) => const TripHistoryScreen(),
+              '/profile': (_) => const DriverProfileScreen(),
+              '/settings': (_) => SettingsScreen(
+                    onDarkModeChanged: _setDarkMode,
+                  ),
+            },
+          );
         },
       ),
     );

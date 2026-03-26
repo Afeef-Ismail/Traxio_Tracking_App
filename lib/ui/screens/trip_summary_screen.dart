@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
 import '../../analytics/coaching_engine.dart';
@@ -76,14 +77,15 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final provider = context.watch<TripProvider>();
     final summary = provider.lastSummary;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (summary == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Trip Summary')),
-        body: const Center(child: Text('No summary available')),
+        appBar: AppBar(title: Text(l10n.tripSummary)),
+        body: Center(child: Text(l10n.tripNotFound)),
       );
     }
 
@@ -111,7 +113,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Trip Complete',
+                    l10n.tripComplete,
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -150,7 +152,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     const SizedBox(height: 20),
 
                     // ─── Cluster Match Section ───────────────────────
-                    _SectionTitle('Cluster Matching', isDark: isDark),
+                    _SectionTitle(l10n.clusterMatching, isDark: isDark),
                     const SizedBox(height: 10),
                     Row(
                       children: [
@@ -177,7 +179,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
                     // ─── Overall Deviation ───────────────────────────
                     SummaryCard(
-                      title: 'Overall Average Deviation',
+                      title: l10n.averageDeviation,
                       value: summary.overallAvgDeviation.toStringAsFixed(2),
                       subtitle:
                           '${summary.validSegments} of ${summary.totalSegments} segments valid',
@@ -191,12 +193,12 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     const SizedBox(height: 20),
 
                     // ─── Per-Terrain Deviation ───────────────────────
-                    _SectionTitle('Deviation by Terrain', isDark: isDark),
+                    _SectionTitle(l10n.deviationByTerrain, isDark: isDark),
                     const SizedBox(height: 10),
 
                     if (summary.plainSegments > 0) ...[
                       _TerrainDeviationRow(
-                        terrain: 'Plain',
+                        terrain: l10n.plain,
                         deviation: summary.avgDeviationPlain,
                         segmentCount: summary.plainSegments,
                         isDark: isDark,
@@ -205,7 +207,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     ],
                     if (summary.uphillSegments > 0) ...[
                       _TerrainDeviationRow(
-                        terrain: 'Uphill',
+                        terrain: l10n.uphill,
                         deviation: summary.avgDeviationUphill,
                         segmentCount: summary.uphillSegments,
                         isDark: isDark,
@@ -214,7 +216,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     ],
                     if (summary.downhillSegments > 0) ...[
                       _TerrainDeviationRow(
-                        terrain: 'Downhill',
+                        terrain: l10n.downhill,
                         deviation: summary.avgDeviationDownhill,
                         segmentCount: summary.downhillSegments,
                         isDark: isDark,
@@ -224,7 +226,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     const SizedBox(height: 20),
 
                     // ─── Terrain Distribution ────────────────────────
-                    _SectionTitle('Terrain Distribution', isDark: isDark),
+                    _SectionTitle(l10n.terrainDistribution, isDark: isDark),
                     const SizedBox(height: 10),
                     _TerrainDistributionBar(
                       plain: summary.plainSegments,
@@ -237,17 +239,17 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _TerrainLegend(
-                          terrain: 'Plain',
+                          terrain: l10n.plain,
                           count: summary.plainSegments,
                           total: totalTerrainSegments,
                         ),
                         _TerrainLegend(
-                          terrain: 'Uphill',
+                          terrain: l10n.uphill,
                           count: summary.uphillSegments,
                           total: totalTerrainSegments,
                         ),
                         _TerrainLegend(
-                          terrain: 'Downhill',
+                          terrain: l10n.downhill,
                           count: summary.downhillSegments,
                           total: totalTerrainSegments,
                         ),
@@ -256,38 +258,38 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     const SizedBox(height: 28),
 
                     // ─── Trip Info ────────────────────────────────────
-                    _SectionTitle('Trip Information', isDark: isDark),
+                    _SectionTitle(l10n.tripInformation, isDark: isDark),
                     const SizedBox(height: 10),
                     _InfoRow(
-                      'Start Time',
+                      l10n.startTime,
                       _formatTime(summary.startTime),
                       isDark: isDark,
                     ),
                     _InfoRow(
-                      'End Time',
+                      l10n.endTime,
                       _formatTime(summary.endTime),
                       isDark: isDark,
                     ),
                     _InfoRow(
-                      'Duration',
+                      l10n.duration,
                       _formatDuration(
                           summary.endTime.difference(summary.startTime)),
                       isDark: isDark,
                     ),
                     _InfoRow(
-                      'Total Segments',
+                      l10n.totalSegments,
                       '${summary.totalSegments}',
                       isDark: isDark,
                     ),
                     _InfoRow(
-                      'Valid Segments',
+                      l10n.validSegments,
                       '${summary.validSegments}',
                       isDark: isDark,
                     ),
                     const SizedBox(height: 24),
 
                     // ─── AI Coaching Report ──────────────────────────
-                    _SectionTitle('AI Coach', isDark: isDark),
+                    _SectionTitle(l10n.aiCoach, isDark: isDark),
                     const SizedBox(height: 10),
                     if (_aiLoading)
                       _ShimmerCard(isDark: isDark)
@@ -316,7 +318,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'AI coaching unavailable. Check your connection.',
+                                l10n.coachingUnavailable,
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: isDark
@@ -331,7 +333,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     const SizedBox(height: 20),
 
                     // ─── Rule-Based Coaching Cards ───────────────────
-                    _SectionTitle('Coaching Report', isDark: isDark),
+                    _SectionTitle(l10n.coachingReport, isDark: isDark),
                     const SizedBox(height: 10),
                     if (!_coachingLoaded)
                       const Padding(
@@ -347,7 +349,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
                     // ─── Action Buttons ──────────────────────────────
                     PrimaryButton(
-                      label: 'View Segments',
+                      label: l10n.viewSegments,
                       icon: Icons.grid_view_rounded,
                       onPressed: () {
                         Navigator.of(context).push(
@@ -361,7 +363,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     ),
                     const SizedBox(height: 12),
                     PrimaryButton(
-                      label: 'Done',
+                      label: l10n.done,
                       icon: Icons.check_rounded,
                       onPressed: () => _goHome(provider),
                     ),

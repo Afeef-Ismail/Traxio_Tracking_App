@@ -83,6 +83,9 @@ class TripProvider extends ChangeNotifier {
   // ─── Current driver ID for trip attribution ────────────────────────
   int _currentUserId = 0;
 
+  // ─── Selected vehicle type for scoring ────────────────────────────
+  String _selectedVehicleType = '';
+
   /// Set the current driver's user ID (call after login).
   void setCurrentUserId(int userId) {
     _currentUserId = userId;
@@ -124,6 +127,7 @@ class TripProvider extends ChangeNotifier {
   bool get isRecording => _state == TripState.recording;
   bool get isCollectionMode => _isCollectionMode;
   double get collectionSegmentDistanceM => _collectionSegmentDistanceM;
+  String get selectedVehicleType => _selectedVehicleType;
   double? get currentLat => _currentLat;
   double? get currentLon => _currentLon;
   List<LatLng> get gpsTrail => List.unmodifiable(_gpsTrail);
@@ -131,9 +135,10 @@ class TripProvider extends ChangeNotifier {
       List.unmodifiable(_segmentMarkers);
 
   /// Start a new trip recording.
-  Future<void> startTrip() async {
+  Future<void> startTrip({String vehicleType = ''}) async {
     try {
       _tripId = const Uuid().v4();
+      _selectedVehicleType = vehicleType;
       _isCollectionMode = false;
       _collectionSegmentDistanceM = AppConstants.segmentDistanceMeters;
       _segmentsCompleted = 0;
@@ -189,7 +194,7 @@ class TripProvider extends ChangeNotifier {
       );
 
       // Load benchmark features from DB (cached for the trip)
-      await _tripProcessor.loadBenchmarks();
+      await _tripProcessor.loadBenchmarks(vehicleType: vehicleType);
 
       // Listen to sensor samples (same stream interface for both)
       final sampleStream = AppConstants.demoMode
@@ -326,6 +331,7 @@ class TripProvider extends ChangeNotifier {
       _lastSummary = await _tripAnalytics.generateSummary(
         _tripId,
         userId: _currentUserId,
+        vehicleType: _selectedVehicleType,
       );
 
       // Clear benchmark cache
@@ -434,10 +440,16 @@ class TripProvider extends ChangeNotifier {
     }
   }
 
+  /// Get vehicle types available across all active clusters.
+  Future<List<String>> getActiveVehicleTypes() async {
+    return await _db.getActiveVehicleTypes();
+  }
+
   /// Reset to idle state.
   void reset() {
     _state = TripState.idle;
     _isCollectionMode = false;
+    _selectedVehicleType = '';
     _tripId = '';
     _errorMessage = '';
     _segmentsCompleted = 0;

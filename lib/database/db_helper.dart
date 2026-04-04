@@ -8,6 +8,7 @@ import '../models/raw_model.dart';
 import '../models/segment_model.dart';
 import '../models/feature_result.dart';
 import '../models/trip_model.dart';
+import '../models/cluster_model.dart';
 
 /// Singleton database helper managing all SQLite operations.
 class DbHelper {
@@ -107,6 +108,7 @@ class DbHelper {
         cluster0_deviation REAL NOT NULL,
         cluster1_deviation REAL NOT NULL,
         matched_cluster INTEGER NOT NULL,
+        matched_cluster_name TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (segment_id) REFERENCES segments(id)
       )
     ''');
@@ -135,7 +137,8 @@ class DbHelper {
         downhill_segments INTEGER NOT NULL,
         user_id INTEGER NOT NULL DEFAULT 0,
         coaching_report TEXT NOT NULL DEFAULT '',
-        score REAL NOT NULL DEFAULT -1
+        score REAL NOT NULL DEFAULT -1,
+        vehicle_type TEXT NOT NULL DEFAULT ''
       )
     ''');
 
@@ -148,8 +151,17 @@ class DbHelper {
     // ─── benchmark_config ──────────────────────────────────────────
     await _createBenchmarkConfigTable(db);
 
+    // ─── clusters ──────────────────────────────────────────────────
+    await _createClustersTable(db);
+
+    // ─── cluster_features ──────────────────────────────────────────
+    await _createClusterFeaturesTable(db);
+
     // ─── Seed default data ─────────────────────────────────────────
     await _seedDefaults(db);
+
+    // ─── Seed default clusters ─────────────────────────────────────
+    await _seedDefaultClusters(db);
   }
 
   /// Upgrade handler for existing installations.
@@ -191,6 +203,19 @@ class DbHelper {
         'value': '100.0',
         'updated_at': DateTime.now().millisecondsSinceEpoch,
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    if (oldVersion < 8) {
+      // Add matched_cluster_name to segment_scores
+      await db.execute(
+          "ALTER TABLE segment_scores ADD COLUMN matched_cluster_name TEXT NOT NULL DEFAULT ''");
+      // Add vehicle_type to trip_summaries
+      await db.execute(
+          "ALTER TABLE trip_summaries ADD COLUMN vehicle_type TEXT NOT NULL DEFAULT ''");
+      // Create clusters and cluster_features tables
+      await _createClustersTable(db);
+      await _createClusterFeaturesTable(db);
+      // Seed default clusters from existing benchmark_config
+      await _seedDefaultClusters(db);
     }
   }
 
@@ -241,6 +266,139 @@ class DbHelper {
     ''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_bench_terrain ON benchmark_config(terrain)');
+  }
+
+  /// Create the clusters table.
+  Future<void> _createClustersTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS clusters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        route TEXT NOT NULL DEFAULT '',
+        vehicle_type TEXT NOT NULL DEFAULT 'Bus',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT '',
+        deleted_at TEXT
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_clusters_active ON clusters(is_active)');
+  }
+
+  /// Create the cluster_features table.
+  Future<void> _createClusterFeaturesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cluster_features (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cluster_id INTEGER NOT NULL,
+        terrain TEXT NOT NULL,
+        feature_name TEXT NOT NULL,
+        min_value REAL NOT NULL,
+        max_value REAL NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (cluster_id) REFERENCES clusters(id)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_cf_cluster ON cluster_features(cluster_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_cf_terrain ON cluster_features(cluster_id, terrain)');
+  }
+
+  /// Seed two default clusters from existing benchmark_config data.
+  Future<void> _seedDefaultClusters(Database db) async {
+    // Only seed if no clusters exist yet
+    final existing = await db.query('clusters', limit: 1);
+    if (existing.isNotEmpty) return;
+
+    final now = DateTime.now().toIso8601String();
+
+    final clusterAId = await db.insert('clusters', {
+      'name': 'Master Driver A',
+      'description': 'Benchmark cluster based on CEB master driver behavior',
+      'route': 'Kozhikode Bus Stand → Sulthan Bathery',
+      'vehicle_type': 'Bus',
+      'is_active': 1,
+      'created_at': now,
+      'updated_at': now,
+      'deleted_at': null,
+    });
+
+    final clusterBId = await db.insert('clusters', {
+      'name': 'Master Driver B',
+      'description': 'Benchmark cluster based on DEB master driver behavior',
+      'route': 'Kozhikode Bus Stand → Sulthan Bathery',
+      'vehicle_type': 'Bus',
+      'is_active': 1,
+      'created_at': now,
+      'updated_at': now,
+      'deleted_at': null,
+    });
+
+    // Read benchmark_config and convert to cluster_features
+    final terrains = [
+      AppConstants.terrainPlain,
+      AppConstants.terrainUphill,
+      AppConstants.terrainDownhill,
+    ];
+
+    for (final terrain in terrains) {
+      List<Map<String, dynamic>> rows = [];
+      try {
+        rows = await db.query(
+          'benchmark_config',
+          where: 'terrain = ?',
+          whereArgs: [terrain],
+        );
+      } catch (_) {
+        // benchmark_config may not exist yet in fresh installs — use hardcoded
+        rows = [];
+      }
+
+      // Use hardcoded tables if DB is empty
+      if (rows.isEmpty) {
+        final features = BenchmarkTables.getFeaturesForTerrain(terrain);
+        for (final f in features) {
+          await db.insert('cluster_features', {
+            'cluster_id': clusterAId,
+            'terrain': terrain,
+            'feature_name': f.featureKey,
+            'min_value': f.cluster0.min,
+            'max_value': f.cluster0.max,
+            'updated_at': now,
+          });
+          await db.insert('cluster_features', {
+            'cluster_id': clusterBId,
+            'terrain': terrain,
+            'feature_name': f.featureKey,
+            'min_value': f.cluster1.min,
+            'max_value': f.cluster1.max,
+            'updated_at': now,
+          });
+        }
+      } else {
+        for (final row in rows) {
+          await db.insert('cluster_features', {
+            'cluster_id': clusterAId,
+            'terrain': terrain,
+            'feature_name': row['feature_key'],
+            'min_value': row['cluster0_min'],
+            'max_value': row['cluster0_max'],
+            'updated_at': now,
+          });
+          await db.insert('cluster_features', {
+            'cluster_id': clusterBId,
+            'terrain': terrain,
+            'feature_name': row['feature_key'],
+            'min_value': row['cluster1_min'],
+            'max_value': row['cluster1_max'],
+            'updated_at': now,
+          });
+        }
+      }
+    }
   }
 
   Future<void> _createDataCollectionTripsTable(Database db) async {
@@ -810,6 +968,7 @@ class DbHelper {
       SELECT
         s.id AS segment_id,
         ss.matched_cluster,
+        ss.matched_cluster_name,
         ss.cluster0_deviation,
         ss.cluster1_deviation
       FROM segments s
@@ -823,11 +982,165 @@ class DbHelper {
       final segmentId = row['segment_id'] as int;
       map[segmentId] = {
         'matched_cluster': row['matched_cluster'],
+        'matched_cluster_name': row['matched_cluster_name'] ?? '',
         'cluster0_deviation': row['cluster0_deviation'],
         'cluster1_deviation': row['cluster1_deviation'],
       };
     }
     return map;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // CLUSTER OPERATIONS
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// Create a new cluster. Returns the inserted row ID.
+  Future<int> createCluster(ClusterDefinition cluster) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    return await db.insert('clusters', {
+      ...cluster.toMap(),
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  /// Update an existing cluster's metadata.
+  Future<void> updateCluster(ClusterDefinition cluster) async {
+    final db = await database;
+    await db.update(
+      'clusters',
+      {
+        'name': cluster.name,
+        'description': cluster.description,
+        'route': cluster.route,
+        'vehicle_type': cluster.vehicleType,
+        'is_active': cluster.isActive ? 1 : 0,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [cluster.id],
+    );
+  }
+
+  /// Soft-delete a cluster (sets is_active=0 and deleted_at).
+  Future<void> deleteCluster(int id) async {
+    final db = await database;
+    await db.update(
+      'clusters',
+      {
+        'is_active': 0,
+        'deleted_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Get all clusters (including inactive, excluding hard-deleted).
+  Future<List<ClusterDefinition>> getAllClusters() async {
+    final db = await database;
+    final maps = await db.query(
+      'clusters',
+      where: 'deleted_at IS NULL',
+      orderBy: 'id ASC',
+    );
+    return maps.map((m) => ClusterDefinition.fromMap(m)).toList();
+  }
+
+  /// Get only active clusters (is_active=1).
+  Future<List<ClusterDefinition>> getActiveClusters() async {
+    final db = await database;
+    final maps = await db.query(
+      'clusters',
+      where: 'is_active = 1 AND deleted_at IS NULL',
+      orderBy: 'id ASC',
+    );
+    return maps.map((m) => ClusterDefinition.fromMap(m)).toList();
+  }
+
+  /// Get all feature ranges for a specific cluster and terrain.
+  Future<List<ClusterFeatureRange>> getClusterFeatures(
+      int clusterId, String terrain) async {
+    final db = await database;
+    final maps = await db.query(
+      'cluster_features',
+      where: 'cluster_id = ? AND terrain = ?',
+      whereArgs: [clusterId, terrain],
+      orderBy: 'id ASC',
+    );
+    return maps.map((m) => ClusterFeatureRange.fromMap(m)).toList();
+  }
+
+  /// Get all feature ranges for a cluster (all terrains).
+  Future<List<ClusterFeatureRange>> getAllClusterFeatures(int clusterId) async {
+    final db = await database;
+    final maps = await db.query(
+      'cluster_features',
+      where: 'cluster_id = ?',
+      whereArgs: [clusterId],
+      orderBy: 'terrain ASC, id ASC',
+    );
+    return maps.map((m) => ClusterFeatureRange.fromMap(m)).toList();
+  }
+
+  /// Update a cluster feature's min/max range.
+  Future<void> updateClusterFeature(ClusterFeatureRange feature) async {
+    final db = await database;
+    await db.update(
+      'cluster_features',
+      {
+        'min_value': feature.minValue,
+        'max_value': feature.maxValue,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [feature.id],
+    );
+  }
+
+  /// Add a new feature to a cluster. Returns the inserted row ID.
+  Future<int> addClusterFeature(ClusterFeatureRange feature) async {
+    final db = await database;
+    return await db.insert('cluster_features', {
+      ...feature.toMap(),
+      'updated_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Remove a feature from a cluster.
+  Future<void> removeClusterFeature(int featureId) async {
+    final db = await database;
+    await db.delete(
+      'cluster_features',
+      where: 'id = ?',
+      whereArgs: [featureId],
+    );
+  }
+
+  /// Remove all features for a cluster (used when replacing all features).
+  Future<void> removeAllClusterFeatures(int clusterId) async {
+    final db = await database;
+    await db.delete(
+      'cluster_features',
+      where: 'cluster_id = ?',
+      whereArgs: [clusterId],
+    );
+  }
+
+  /// Get unique vehicle types across all active clusters.
+  Future<List<String>> getActiveVehicleTypes() async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT DISTINCT vehicle_type FROM clusters
+      WHERE is_active = 1 AND deleted_at IS NULL
+      ORDER BY vehicle_type ASC
+    ''');
+    return maps
+        .map((m) => (m['vehicle_type'] as String?) ?? '')
+        .where((v) => v.isNotEmpty)
+        .toList();
   }
 
   /// Close the database.

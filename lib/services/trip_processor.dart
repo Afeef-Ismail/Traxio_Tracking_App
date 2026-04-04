@@ -1,6 +1,7 @@
 import '../models/segment_model.dart';
 import '../models/feature_result.dart';
 import '../models/trip_model.dart';
+import '../models/cluster_model.dart';
 import '../services/segmentation_service.dart';
 import '../services/terrain_service.dart';
 import '../analytics/smoothing.dart';
@@ -67,11 +68,20 @@ class TripProcessor {
   String get tripId => _tripId;
   double get segmentDistanceM => _segmentDistanceM;
 
-  /// Cached benchmark features per terrain, loaded from DB once per trip.
+  /// Cached benchmark features per terrain (fallback), loaded from DB once per trip.
   final Map<String, List<BenchmarkFeature>> _benchmarkCache = {};
 
-  /// Load and cache benchmark features for all terrains from DB.
-  Future<void> loadBenchmarks() async {
+  /// Active dynamic clusters loaded from DB.
+  List<ClusterDefinition> _activeClusters = [];
+
+  /// Cache of cluster features keyed by "clusterId_terrain".
+  final Map<String, List<ClusterFeatureRange>> _clusterFeaturesCache = {};
+
+  /// Load and cache benchmark features (fallback) and active clusters from DB.
+  ///
+  /// [vehicleType] optionally filters which clusters are loaded.
+  Future<void> loadBenchmarks({String? vehicleType}) async {
+    // Load fallback benchmark_config for each terrain
     for (final terrain in [
       AppConstants.terrainPlain,
       AppConstants.terrainUphill,
@@ -79,11 +89,41 @@ class TripProcessor {
     ]) {
       _benchmarkCache[terrain] = await _db.getBenchmarkFeatures(terrain);
     }
+
+    // Load active dynamic clusters (filtered by vehicle type if specified)
+    final allActive = await _db.getActiveClusters();
+    if (vehicleType != null && vehicleType.isNotEmpty) {
+      _activeClusters = allActive
+          .where((c) => c.vehicleType == vehicleType)
+          .toList();
+      // Fall back to all active if no clusters match the vehicle type
+      if (_activeClusters.isEmpty) {
+        _activeClusters = allActive;
+      }
+    } else {
+      _activeClusters = allActive;
+    }
+
+    // Load features for each active cluster
+    for (final cluster in _activeClusters) {
+      if (cluster.id == null) continue;
+      for (final terrain in [
+        AppConstants.terrainPlain,
+        AppConstants.terrainUphill,
+        AppConstants.terrainDownhill,
+      ]) {
+        final cacheKey = '${cluster.id}_$terrain';
+        _clusterFeaturesCache[cacheKey] =
+            await _db.getClusterFeatures(cluster.id!, terrain);
+      }
+    }
   }
 
   /// Clear the benchmark cache (call when trip ends or benchmarks change).
   void clearBenchmarkCache() {
     _benchmarkCache.clear();
+    _activeClusters = [];
+    _clusterFeaturesCache.clear();
   }
 
   /// Process a completed 100m segment.
@@ -265,27 +305,51 @@ class TripProcessor {
     }
 
     // ─── 9. Compute deviation scores ───────────────────────────────
-    final devResult = DeviationEngine.computeSegmentDeviation(
-      terrain: terrain,
-      featureValues: allFeatures,
-      benchmarkFeatures: _benchmarkCache[terrain],
-    );
+    SegmentScore score;
 
-    final score = SegmentScore(
-      segmentId: segmentId,
-      cluster0Deviation: devResult.cluster0Deviation,
-      cluster1Deviation: devResult.cluster1Deviation,
-      matchedCluster: devResult.matchedCluster,
-    );
+    if (_activeClusters.isNotEmpty) {
+      // Dynamic cluster scoring
+      final dynResult = DeviationEngine.computeSegmentDeviationDynamic(
+        featureValues: allFeatures,
+        clusters: _activeClusters,
+        featuresCache: _clusterFeaturesCache,
+        terrain: terrain,
+      );
+
+      score = SegmentScore(
+        segmentId: segmentId,
+        cluster0Deviation: dynResult.cluster0Deviation,
+        cluster1Deviation: dynResult.cluster1Deviation,
+        matchedCluster: dynResult.matchedClusterIndex,
+        matchedClusterName: dynResult.bestClusterName,
+      );
+    } else {
+      // Fallback: use hardcoded benchmark_config (no active clusters)
+      final devResult = DeviationEngine.computeSegmentDeviation(
+        terrain: terrain,
+        featureValues: allFeatures,
+        benchmarkFeatures: _benchmarkCache[terrain],
+      );
+
+      score = SegmentScore(
+        segmentId: segmentId,
+        cluster0Deviation: devResult.cluster0Deviation,
+        cluster1Deviation: devResult.cluster1Deviation,
+        matchedCluster: devResult.matchedCluster,
+        matchedClusterName: devResult.matchedCluster == 0
+            ? 'Master Driver A'
+            : 'Master Driver B',
+      );
+    }
 
     await _db.insertSegmentScore(score);
 
     return SegmentProcessResult(
       segmentId: segmentId,
       terrain: terrain,
-      matchedCluster: devResult.matchedCluster,
-      cluster0Deviation: devResult.cluster0Deviation,
-      cluster1Deviation: devResult.cluster1Deviation,
+      matchedCluster: score.matchedCluster,
+      cluster0Deviation: score.cluster0Deviation,
+      cluster1Deviation: score.cluster1Deviation,
       isValid: true,
     );
   }

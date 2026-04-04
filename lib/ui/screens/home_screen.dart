@@ -11,6 +11,10 @@ import '../widgets/terrain_badge.dart';
 import '../widgets/buttons.dart';
 import '../theme/app_colors.dart';
 import 'data_collection_screen.dart';
+import 'calibration_screen.dart';
+import '../../services/calibration_service.dart';
+import '../../config/constants.dart';
+import '../screens/cluster_management_screen.dart' show vehicleTypeIcon;
 
 /// Home / Start Trip Screen.
 ///
@@ -28,6 +32,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _sessionTimer;
   bool _pendingStartTripAfterLocationSettings = false;
+  bool _isCalibrated = false;
+  List<String> _activeVehicleTypes = [];
+
+  final CalibrationService _calibrationService = CalibrationService();
 
   @override
   void initState() {
@@ -40,6 +48,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
       }
     });
+    _loadCalibrationStatus();
+    _loadVehicleTypes();
+  }
+
+  Future<void> _loadCalibrationStatus() async {
+    await _calibrationService.load();
+    if (mounted) {
+      setState(() => _isCalibrated = _calibrationService.isCalibrated);
+    }
+  }
+
+  Future<void> _loadVehicleTypes() async {
+    final provider = context.read<TripProvider>();
+    final types = await provider.getActiveVehicleTypes();
+    if (mounted) {
+      setState(() => _activeVehicleTypes = types);
+    }
   }
 
   @override
@@ -121,11 +146,72 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!serviceEnabled || !mounted) return;
 
     _pendingStartTripAfterLocationSettings = false;
-    await provider.startTrip();
+
+    // In real mode: prompt calibration if not calibrated yet
+    if (!AppConstants.demoMode && !_isCalibrated) {
+      final didCalibrate = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => const CalibrationScreen(showContinueButton: true),
+        ),
+      );
+      if (!mounted) return;
+      if (didCalibrate != true) return;
+      await _loadCalibrationStatus();
+    }
+
+    // Select vehicle type if multiple types exist across active clusters
+    String vehicleType = '';
+    if (_activeVehicleTypes.length > 1) {
+      vehicleType = await _showVehicleTypeSelection() ?? '';
+      if (!mounted) return;
+    } else if (_activeVehicleTypes.length == 1) {
+      vehicleType = _activeVehicleTypes.first;
+    }
+
+    await provider.startTrip(vehicleType: vehicleType);
     if (!mounted) return;
     if (provider.state == TripState.recording) {
       Navigator.of(context).pushReplacementNamed('/trip');
     }
+  }
+
+  Future<String?> _showVehicleTypeSelection() async {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('What are you driving?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: _activeVehicleTypes.map((type) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.of(ctx).pop(type),
+                    icon: Icon(vehicleTypeIcon(type), size: 24),
+                    label: Text(
+                      type,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -293,6 +379,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               ),
               const SizedBox(height: 20),
+              // Calibration status indicator (real mode only)
+              if (!AppConstants.demoMode) ...[
+                GestureDetector(
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CalibrationScreen(),
+                      ),
+                    );
+                    _loadCalibrationStatus();
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isCalibrated
+                            ? Icons.check_circle_rounded
+                            : Icons.warning_amber_rounded,
+                        size: 16,
+                        color: _isCalibrated
+                            ? AppColors.success
+                            : AppColors.warning,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isCalibrated
+                            ? 'Calibrated'
+                            : 'Not calibrated — tap to calibrate',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _isCalibrated
+                              ? AppColors.success
+                              : AppColors.warning,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               PrimaryButton(
                 label: l10n.startTrip,
                 icon: Icons.play_arrow_rounded,

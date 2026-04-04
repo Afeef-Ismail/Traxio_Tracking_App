@@ -79,6 +79,7 @@ class CsvExportService {
         return {
           ...row,
           'matched_cluster': score['matched_cluster'],
+          'matched_cluster_name': score['matched_cluster_name'] ?? '',
           'cluster0_deviation': score['cluster0_deviation'],
           'cluster1_deviation': score['cluster1_deviation'],
         };
@@ -101,6 +102,7 @@ class CsvExportService {
         'sample_count',
         'is_valid',
         'matched_cluster',
+        'matched_cluster_name',
         'cluster0_deviation',
         'cluster1_deviation',
         ...featureColumns,

@@ -1,5 +1,6 @@
 import '../config/benchmark_tables.dart';
 import '../models/trip_model.dart';
+import '../models/cluster_model.dart';
 
 /// Computes deviation-based behavioral assessment against master driver
 /// benchmark cluster ranges.
@@ -74,6 +75,111 @@ class DeviationEngine {
       featureDeviations: details,
     );
   }
+
+  /// Compute total deviation for a single cluster given its feature ranges.
+  ///
+  /// [featureValues] - Map of "Attribute_FeatureName" → computed value
+  /// [clusterFeatures] - Feature ranges for this cluster and terrain
+  ///
+  /// Returns the sum of per-feature deviations.
+  static double computeDeviationForCluster(
+    Map<String, double> featureValues,
+    List<ClusterFeatureRange> clusterFeatures,
+  ) {
+    double total = 0.0;
+    for (final cf in clusterFeatures) {
+      final value = featureValues[cf.featureName];
+      if (value == null) continue;
+      total += computeFeatureDeviation(
+        value,
+        BenchmarkRange(cf.minValue, cf.maxValue),
+      );
+    }
+    return total;
+  }
+
+  /// Compute deviations against multiple dynamic clusters for a segment.
+  ///
+  /// Returns a [DynamicDeviationResult] containing per-cluster deviations
+  /// and the name of the best-matching cluster.
+  static DynamicDeviationResult computeSegmentDeviationDynamic({
+    required Map<String, double> featureValues,
+    required List<ClusterDefinition> clusters,
+    required Map<String, List<ClusterFeatureRange>> featuresCache,
+    required String terrain,
+  }) {
+    final Map<int, double> clusterDeviations = {};
+
+    for (final cluster in clusters) {
+      if (cluster.id == null) continue;
+      final cacheKey = '${cluster.id}_$terrain';
+      final features = featuresCache[cacheKey] ?? [];
+      if (features.isEmpty) continue;
+      clusterDeviations[cluster.id!] =
+          computeDeviationForCluster(featureValues, features);
+    }
+
+    if (clusterDeviations.isEmpty) {
+      return DynamicDeviationResult(
+        clusterDeviations: {},
+        bestClusterName: '',
+        cluster0Deviation: 0.0,
+        cluster1Deviation: 0.0,
+        matchedClusterIndex: 0,
+      );
+    }
+
+    // Sort clusters by ID (consistent ordering for cluster0/cluster1 labelling)
+    final sortedClusters = List<ClusterDefinition>.from(clusters)
+      ..sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
+
+    // Find best cluster (lowest deviation)
+    int? bestId;
+    double bestDev = double.infinity;
+    for (final entry in clusterDeviations.entries) {
+      if (entry.value < bestDev) {
+        bestDev = entry.value;
+        bestId = entry.key;
+      }
+    }
+
+    final bestCluster = clusters.firstWhere(
+      (c) => c.id == bestId,
+      orElse: () => sortedClusters.first,
+    );
+
+    // cluster0 = first in sorted order, cluster1 = second
+    final c0Id = sortedClusters.isNotEmpty ? sortedClusters[0].id : null;
+    final c1Id = sortedClusters.length > 1 ? sortedClusters[1].id : null;
+    final c0Dev = (c0Id != null ? clusterDeviations[c0Id] : null) ?? 0.0;
+    final c1Dev = (c1Id != null ? clusterDeviations[c1Id] : null) ?? 999999.0;
+    final matchedIndex = c0Dev <= c1Dev ? 0 : 1;
+
+    return DynamicDeviationResult(
+      clusterDeviations: clusterDeviations,
+      bestClusterName: bestCluster.name,
+      cluster0Deviation: c0Dev,
+      cluster1Deviation: c1Dev,
+      matchedClusterIndex: matchedIndex,
+    );
+  }
+}
+
+/// Result of dynamic multi-cluster deviation computation.
+class DynamicDeviationResult {
+  final Map<int, double> clusterDeviations;
+  final String bestClusterName;
+  final double cluster0Deviation;
+  final double cluster1Deviation;
+  final int matchedClusterIndex;
+
+  DynamicDeviationResult({
+    required this.clusterDeviations,
+    required this.bestClusterName,
+    required this.cluster0Deviation,
+    required this.cluster1Deviation,
+    required this.matchedClusterIndex,
+  });
 }
 
 /// Result of deviation computation for one segment.

@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/trip_provider.dart';
-import '../../models/trip_model.dart';
 import '../../analytics/coaching_engine.dart';
 import '../../analytics/score_calculator.dart';
 import '../../services/gemini_coaching_service.dart';
+import '../../database/db_helper.dart';
 import '../widgets/summary_card.dart';
-import '../widgets/terrain_badge.dart';
 import '../widgets/buttons.dart';
 import '../widgets/map_widget.dart';
 import '../theme/app_colors.dart';
 import 'segment_list_screen.dart';
+import 'cluster_management_screen.dart' show vehicleTypeIcon;
 
 /// Trip Summary Screen — shown after trip completion.
 ///
@@ -34,6 +34,8 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
   String? _aiReport;
   bool _aiLoading = false;
   int _tripScore = -1;
+  String _cluster0Name = 'Master Driver A';
+  String _cluster1Name = 'Master Driver B';
 
   @override
   void initState() {
@@ -45,6 +47,15 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     final provider = context.read<TripProvider>();
     final summary = provider.lastSummary;
     if (summary == null) return;
+
+    // Load cluster names from DB
+    final clusters = await DbHelper().getActiveClusters();
+    if (mounted && clusters.isNotEmpty) {
+      setState(() {
+        _cluster0Name = clusters.isNotEmpty ? clusters[0].name : 'Master Driver A';
+        _cluster1Name = clusters.length > 1 ? clusters[1].name : 'Master Driver B';
+      });
+    }
 
     // Compute score
     _tripScore = ScoreCalculator.computeScore(summary.overallAvgDeviation);
@@ -151,6 +162,32 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     ),
                     const SizedBox(height: 20),
 
+                    // ─── Vehicle type badge ───────────────────────────
+                    if (summary.vehicleType.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          Icon(
+                            vehicleTypeIcon(summary.vehicleType),
+                            size: 16,
+                            color: isDark
+                                ? AppColors.textOnDarkSecondary
+                                : AppColors.textSecondary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            summary.vehicleType,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDark
+                                  ? AppColors.textOnDarkSecondary
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
                     // ─── Cluster Match Section ───────────────────────
                     _SectionTitle(l10n.clusterMatching, isDark: isDark),
                     const SizedBox(height: 10),
@@ -158,7 +195,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                       children: [
                         Expanded(
                           child: _ClusterCard(
-                            cluster: 0,
+                            clusterName: _cluster0Name,
                             percentage: summary.cluster0Percentage,
                             count: summary.cluster0Matches,
                             isDark: isDark,
@@ -167,7 +204,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _ClusterCard(
-                            cluster: 1,
+                            clusterName: _cluster1Name,
                             percentage: summary.cluster1Percentage,
                             count: summary.cluster1Matches,
                             isDark: isDark,
@@ -421,13 +458,13 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _ClusterCard extends StatelessWidget {
-  final int cluster;
+  final String clusterName;
   final double percentage;
   final int count;
   final bool isDark;
 
   const _ClusterCard({
-    required this.cluster,
+    required this.clusterName,
     required this.percentage,
     required this.count,
     required this.isDark,
@@ -447,9 +484,11 @@ class _ClusterCard extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            'Cluster $cluster',
+            clusterName,
+            textAlign: TextAlign.center,
+            maxLines: 2,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w500,
               color: isDark
                   ? AppColors.textOnDarkSecondary

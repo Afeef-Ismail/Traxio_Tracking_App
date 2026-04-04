@@ -5,6 +5,7 @@ class SegmentScore {
   final double cluster0Deviation;
   final double cluster1Deviation;
   final int matchedCluster;
+  final String matchedClusterName;
 
   SegmentScore({
     this.id,
@@ -12,6 +13,7 @@ class SegmentScore {
     required this.cluster0Deviation,
     required this.cluster1Deviation,
     required this.matchedCluster,
+    this.matchedClusterName = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -21,6 +23,7 @@ class SegmentScore {
       'cluster0_deviation': cluster0Deviation,
       'cluster1_deviation': cluster1Deviation,
       'matched_cluster': matchedCluster,
+      'matched_cluster_name': matchedClusterName,
     };
   }
 
@@ -31,6 +34,7 @@ class SegmentScore {
       cluster0Deviation: (map['cluster0_deviation'] as num).toDouble(),
       cluster1Deviation: (map['cluster1_deviation'] as num).toDouble(),
       matchedCluster: map['matched_cluster'] as int,
+      matchedClusterName: (map['matched_cluster_name'] as String?) ?? '',
     );
   }
 }
@@ -56,6 +60,7 @@ class TripSummary {
   final int userId;
   final String coachingReport;
   final double score;
+  final String vehicleType;
 
   /// Populated from JOIN when reading; not stored in trip_summaries table.
   final String driverName;
@@ -81,6 +86,7 @@ class TripSummary {
     this.userId = 0,
     this.coachingReport = '',
     this.score = -1,
+    this.vehicleType = '',
     this.driverName = '',
     this.busNumber = '',
   });
@@ -106,6 +112,7 @@ class TripSummary {
       'user_id': userId,
       'coaching_report': coachingReport,
       'score': score,
+      'vehicle_type': vehicleType,
     };
   }
 
@@ -130,6 +137,7 @@ class TripSummary {
       userId: (map['user_id'] as int?) ?? 0,
       coachingReport: (map['coaching_report'] as String?) ?? '',
       score: (map['score'] as num?)?.toDouble() ?? -1,
+      vehicleType: (map['vehicle_type'] as String?) ?? '',
       driverName: (map['driver_name'] as String?) ?? '',
       busNumber: (map['bus_number'] as String?) ?? '',
     );

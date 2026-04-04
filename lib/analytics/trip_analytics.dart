@@ -15,7 +15,11 @@ class TripAnalytics {
   final DbHelper _db = DbHelper();
 
   /// Generate and save a complete trip summary.
-  Future<TripSummary> generateSummary(String tripId, {int userId = 0}) async {
+  Future<TripSummary> generateSummary(
+    String tripId, {
+    int userId = 0,
+    String vehicleType = '',
+  }) async {
     final segments = await _db.getSegmentsForTrip(tripId);
     final scores = await _db.getScoresForTrip(tripId);
 
@@ -99,6 +103,7 @@ class TripAnalytics {
       uphillSegments: uphillSegs.length,
       downhillSegments: downhillSegs.length,
       userId: userId,
+      vehicleType: vehicleType,
     );
 
     await _db.saveTripSummary(summary);

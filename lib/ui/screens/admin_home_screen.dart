@@ -12,6 +12,7 @@ import 'threshold_editor_screen.dart';
 import 'driver_management_screen.dart';
 import 'benchmark_editor_screen.dart';
 import 'admin_collection_screen.dart';
+import 'cluster_management_screen.dart';
 
 /// Admin Home Screen — dashboard for admin users.
 ///
@@ -168,6 +169,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const AdminCollectionScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _AdminActionCard(
+                    icon: Icons.group_work_rounded,
+                    label: 'Clusters',
+                    color: AppColors.warning,
+                    isDark: isDark,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ClusterManagementScreen(),
                         ),
                       );
                     },

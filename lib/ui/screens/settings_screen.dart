@@ -4,8 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/language_provider.dart';
+import '../../config/constants.dart';
 import '../widgets/buttons.dart';
 import '../theme/app_colors.dart';
+import 'calibration_screen.dart';
 
 /// Settings Screen — minimal configuration options.
 ///
@@ -160,21 +162,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SecondaryButton(
-                    label: 'Calibrate Sensors',
-                    icon: Icons.tune_rounded,
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Place phone on flat surface and start a trip. '
-                            'Calibration happens automatically during the first 2 seconds.',
+                  if (!AppConstants.demoMode)
+                    SecondaryButton(
+                      label: 'Calibrate Sensors',
+                      icon: Icons.tune_rounded,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CalibrationScreen(),
                           ),
-                          duration: Duration(seconds: 3),
-                        ),
-                      );
-                    },
-                  ),
+                        );
+                      },
+                    )
+                  else
+                    Text(
+                      'Calibration is not available in demo mode.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        color: isDark
+                            ? AppColors.textOnDarkSecondary
+                            : AppColors.textMuted,
+                      ),
+                    ),
                 ],
               ),
             ),

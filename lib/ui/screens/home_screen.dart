@@ -240,9 +240,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   labelColor: AppColors.primary,
                   unselectedLabelColor:
                       isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
+                  labelStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontSize: 13,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   tabs: [
-                    Tab(text: l10n.benchmark),
-                    Tab(text: l10n.dataCollection),
+                    Tab(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(l10n.benchmark),
+                      ),
+                    ),
+                    Tab(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(l10n.dataCollection),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -270,23 +289,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.directions_bus_rounded,
-                    color: AppColors.primary,
-                    size: 28,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    l10n.appName,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.directions_bus_rounded,
+                      color: AppColors.primary,
+                      size: 28,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        l10n.appName,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               Row(
                 children: [

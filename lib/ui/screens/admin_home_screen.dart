@@ -10,7 +10,6 @@ import '../theme/app_colors.dart';
 import 'coaching_report_screen.dart';
 import 'threshold_editor_screen.dart';
 import 'driver_management_screen.dart';
-import 'benchmark_editor_screen.dart';
 import 'admin_collection_screen.dart';
 import 'cluster_management_screen.dart';
 
@@ -143,19 +142,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const DriverManagementScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _AdminActionCard(
-                    icon: Icons.bar_chart_rounded,
-                    label: 'Benchmark\nRanges',
-                    color: AppColors.primary,
-                    isDark: isDark,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const BenchmarkEditorScreen(),
                         ),
                       );
                     },

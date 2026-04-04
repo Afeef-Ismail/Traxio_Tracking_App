@@ -62,8 +62,8 @@ dependencies:
   # File sharing
   share_plus: ^10.0.2
 
-  # AI / Gemini
-  google_generative_ai: ^0.4.3
+  # Environment variables
+  flutter_dotenv: ^5.1.0
 
 dev_dependencies:
   flutter_test:
@@ -76,3 +76,4 @@ flutter:
 
   assets:
     - assets/
+    - .env

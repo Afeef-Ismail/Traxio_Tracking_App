@@ -1060,6 +1060,19 @@ class DbHelper {
     return maps.map((m) => ClusterDefinition.fromMap(m)).toList();
   }
 
+  /// Returns a map of clusterName → segment match count for a trip,
+  /// derived from the matched_cluster_name column in segment_scores.
+  Future<Map<String, int>> getClusterMatchCounts(String tripId) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT matched_cluster_name, COUNT(*) AS cnt
+      FROM segment_scores
+      WHERE trip_id = ? AND is_valid = 1 AND matched_cluster_name != ''
+      GROUP BY matched_cluster_name
+    ''', [tripId]);
+    return {for (final r in rows) r['matched_cluster_name'] as String: r['cnt'] as int};
+  }
+
   /// Get all feature ranges for a specific cluster and terrain.
   Future<List<ClusterFeatureRange>> getClusterFeatures(
       int clusterId, String terrain) async {

@@ -4,8 +4,9 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/trip_provider.dart';
 import '../../analytics/coaching_engine.dart';
 import '../../analytics/score_calculator.dart';
-import '../../services/gemini_coaching_service.dart';
+import '../../services/grok_coaching_service.dart';
 import '../../database/db_helper.dart';
+import '../../models/cluster_model.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/buttons.dart';
 import '../widgets/map_widget.dart';
@@ -34,8 +35,9 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
   String? _aiReport;
   bool _aiLoading = false;
   int _tripScore = -1;
-  String _cluster0Name = 'Master Driver A';
-  String _cluster1Name = 'Master Driver B';
+  List<ClusterDefinition> _activeClusters = [];
+  Map<String, int> _clusterMatchCounts = {};
+  int _totalMatchedSegments = 0;
 
   @override
   void initState() {
@@ -48,12 +50,23 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     final summary = provider.lastSummary;
     if (summary == null) return;
 
-    // Load cluster names from DB
-    final clusters = await DbHelper().getActiveClusters();
-    if (mounted && clusters.isNotEmpty) {
+    // Load active clusters filtered by trip vehicle type
+    final allActive = await DbHelper().getActiveClusters();
+    final vehicleType = summary.vehicleType;
+    final filtered = vehicleType.isEmpty
+        ? allActive
+        : allActive
+            .where((c) => c.vehicleType.isEmpty || c.vehicleType == vehicleType)
+            .toList();
+    final matchCounts = await DbHelper().getClusterMatchCounts(summary.tripId);
+    final totalMatched =
+        matchCounts.values.fold(0, (a, b) => a + b);
+
+    if (mounted) {
       setState(() {
-        _cluster0Name = clusters.isNotEmpty ? clusters[0].name : 'Master Driver A';
-        _cluster1Name = clusters.length > 1 ? clusters[1].name : 'Master Driver B';
+        _activeClusters = filtered;
+        _clusterMatchCounts = matchCounts;
+        _totalMatchedSegments = totalMatched > 0 ? totalMatched : summary.validSegments;
       });
     }
 
@@ -73,7 +86,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     }
 
     // Fetch AI report (cached or new)
-    final report = await GeminiCoachingService.getCoachingReport(
+    final report = await GrokCoachingService.getCoachingReport(
       summary,
       segments,
     );
@@ -191,27 +204,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     // ─── Cluster Match Section ───────────────────────
                     _SectionTitle(l10n.clusterMatching, isDark: isDark),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _ClusterCard(
-                            clusterName: _cluster0Name,
-                            percentage: summary.cluster0Percentage,
-                            count: summary.cluster0Matches,
-                            isDark: isDark,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _ClusterCard(
-                            clusterName: _cluster1Name,
-                            percentage: summary.cluster1Percentage,
-                            count: summary.cluster1Matches,
-                            isDark: isDark,
-                          ),
-                        ),
-                      ],
-                    ),
+                    _buildClusterCards(summary, isDark),
                     const SizedBox(height: 20),
 
                     // ─── Overall Deviation ───────────────────────────
@@ -425,6 +418,58 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m';
+  }
+
+  Widget _buildClusterCards(TripSummary summary, bool isDark) {
+    // Use active clusters if available, else fall back to stored cluster0/cluster1 data
+    if (_activeClusters.isEmpty) {
+      return Row(children: [
+        Expanded(
+          child: _ClusterCard(
+            clusterName: 'Master Driver A',
+            percentage: summary.cluster0Percentage,
+            count: summary.cluster0Matches,
+            isDark: isDark,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _ClusterCard(
+            clusterName: 'Master Driver B',
+            percentage: summary.cluster1Percentage,
+            count: summary.cluster1Matches,
+            isDark: isDark,
+          ),
+        ),
+      ]);
+    }
+
+    final cards = _activeClusters.map((c) {
+      final count = _clusterMatchCounts[c.name] ?? 0;
+      final pct = _totalMatchedSegments > 0
+          ? count * 100.0 / _totalMatchedSegments
+          : 0.0;
+      return _ClusterCard(
+        clusterName: c.name,
+        percentage: pct,
+        count: count,
+        isDark: isDark,
+      );
+    }).toList();
+
+    if (cards.length == 1) return cards.first;
+
+    // 2 or more: 2-column wrap
+    return LayoutBuilder(builder: (context, constraints) {
+      final cardWidth = (constraints.maxWidth - 12) / 2;
+      return Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: cards
+            .map((c) => SizedBox(width: cardWidth, child: c))
+            .toList(),
+      );
+    });
   }
 
   String _formatDuration(Duration d) {

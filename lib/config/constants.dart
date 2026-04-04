@@ -74,8 +74,7 @@ class AppConstants {
   static const String dbName = 'ksrtc_benchmarking.db';
   static const int dbVersion = 8;
 
-  // ─── Gemini AI ─────────────────────────────────────────────────────
-  static const String geminiApiKey = 'AIzaSyBk5Ctm7Jh5j8kySFVm71uu1Sz6xMKdID8';
+  // ─── AI Coaching ───────────────────────────────────────────────────
   static const double maxExpectedDeviation = 50.0;
 
   // ─── Terrain Labels ────────────────────────────────────────────────

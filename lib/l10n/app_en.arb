@@ -73,7 +73,7 @@
   "shareCSV": "Share",
   "loading": "Loading...",
   "retry": "Retry",
-  "geminiPowered": "Powered by Gemini",
+  "aiCoachPowered": "Powered by Grok",
   "locationServiceDisabled": "Location Service Disabled",
   "locationServiceMessage": "GPS must be enabled to record a trip. Please turn on Location in your device settings.",
   "openSettings": "Open Settings",

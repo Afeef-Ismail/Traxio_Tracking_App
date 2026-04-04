@@ -73,7 +73,7 @@
   "shareCSV": "शेयर करें",
   "loading": "लोडिंग...",
   "retry": "रीट्राय करें",
-  "geminiPowered": "Gemini द्वारा संचालित",
+  "aiCoachPowered": "Grok द्वारा संचालित",
   "locationServiceDisabled": "लोकेशन सर्विस बंद है",
   "locationServiceMessage": "Trip रिकॉर्ड करने के लिए GPS चालू करें। Settings में Location ऑन करें।",
   "openSettings": "Settings खोलें",

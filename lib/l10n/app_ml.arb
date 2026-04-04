@@ -73,7 +73,7 @@
   "shareCSV": "പങ്കിടുക",
   "loading": "ലോഡ് ചെയ്യുന്നു...",
   "retry": "വീണ്ടും ശ്രമിക്കുക",
-  "geminiPowered": "Gemini പ്രവർത്തിപ്പിക്കുന്നു",
+  "aiCoachPowered": "Grok പ്രവർത്തിപ്പിക്കുന്നു",
   "locationServiceDisabled": "ലൊക്കേഷൻ സർവീസ് ഓഫ് ആണ്",
   "locationServiceMessage": "Trip റെക്കോർഡ് ചെയ്യാൻ GPS ഓൺ ആക്കണം. Settings-ൽ Location ഓൺ ആക്കുക.",
   "openSettings": "Settings തുറക്കുക",

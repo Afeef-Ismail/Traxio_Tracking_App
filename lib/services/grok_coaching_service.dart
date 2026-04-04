@@ -63,9 +63,9 @@ class GrokCoachingService {
       final prompt =
           '$languageInstruction\n\n${_buildPrompt(summary, segments)}';
 
-      final url = Uri.parse('https://api.x.ai/v1/chat/completions');
+      final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
       final body = jsonEncode({
-        'model': 'grok-3-mini',
+        'model': 'llama-3.3-70b-versatile',
         'messages': [
           {'role': 'user', 'content': prompt}
         ],

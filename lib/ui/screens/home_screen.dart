@@ -142,6 +142,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _onStartTripPressed(TripProvider provider) async {
     _updateActivity();
+    // Read profile vehicle type before any await (BuildContext safety)
+    final profileVehicleType =
+        context.read<AuthProvider>().currentUser?['vehicle_type'] as String? ??
+            '';
     final serviceEnabled = await _ensureLocationServiceEnabledForTripStart();
     if (!serviceEnabled || !mounted) return;
 
@@ -161,9 +165,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Use driver's saved vehicle type if set; otherwise prompt
     String vehicleType = '';
-    final profileVehicleType =
-        context.read<AuthProvider>().currentUser?['vehicle_type'] as String? ??
-            '';
     if (profileVehicleType.isNotEmpty) {
       vehicleType = profileVehicleType;
     } else if (_activeVehicleTypes.length > 1) {

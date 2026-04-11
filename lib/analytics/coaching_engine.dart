@@ -1,3 +1,4 @@
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../models/trip_model.dart';
 import '../providers/trip_provider.dart';
 
@@ -5,85 +6,79 @@ import '../providers/trip_provider.dart';
 /// from trip and segment data.
 class CoachingEngine {
   /// Generate a list of coaching insights from a trip summary
-  /// and its segment details.
+  /// and its segment details. Pass [l10n] to get localized strings.
   static List<CoachingInsight> analyze(
     TripSummary summary,
-    List<SegmentDetail> segments,
-  ) {
+    List<SegmentDetail> segments, {
+    AppLocalizations? l10n,
+  }) {
     final insights = <CoachingInsight>[];
+    final dev = summary.overallAvgDeviation;
+    final devStr = dev.toStringAsFixed(2);
 
     // ─── 1. Overall deviation rating ─────────────────────────────
-    final dev = summary.overallAvgDeviation;
     if (dev < 5.0) {
       insights.add(CoachingInsight(
         icon: InsightIcon.trophy,
-        title: 'Excellent Driving',
-        message:
-            'Your overall deviation of ${dev.toStringAsFixed(2)} is well within '
-            'the benchmark range. Keep up the great driving!',
+        title: l10n?.coachExcellentTitle ?? 'Excellent Driving',
+        message: l10n?.coachExcellentMsg(devStr) ??
+            'Your overall deviation of $devStr is well within the benchmark range. Keep up the great driving!',
         severity: Severity.positive,
       ));
     } else if (dev < 10.0) {
       insights.add(CoachingInsight(
         icon: InsightIcon.thumbsUp,
-        title: 'Good Performance',
-        message:
-            'Your deviation of ${dev.toStringAsFixed(2)} shows generally safe '
-            'driving with minor areas for improvement.',
+        title: l10n?.coachGoodTitle ?? 'Good Performance',
+        message: l10n?.coachGoodMsg(devStr) ??
+            'Your deviation of $devStr shows generally safe driving with minor areas for improvement.',
         severity: Severity.neutral,
       ));
     } else if (dev < 20.0) {
       insights.add(CoachingInsight(
         icon: InsightIcon.warning,
-        title: 'Needs Improvement',
-        message:
-            'Your deviation of ${dev.toStringAsFixed(2)} indicates noticeable '
-            'departures from benchmark driving patterns. Review the tips below.',
+        title: l10n?.coachNeedsImpTitle ?? 'Needs Improvement',
+        message: l10n?.coachNeedsImpMsg(devStr) ??
+            'Your deviation of $devStr indicates noticeable departures from benchmark driving patterns. Review the tips below.',
         severity: Severity.warning,
       ));
     } else {
       insights.add(CoachingInsight(
         icon: InsightIcon.alert,
-        title: 'High Deviation Alert',
-        message:
-            'Your deviation of ${dev.toStringAsFixed(2)} is significantly above '
-            'benchmarks. Please review your driving technique carefully.',
+        title: l10n?.coachHighDevTitle ?? 'High Deviation Alert',
+        message: l10n?.coachHighDevMsg(devStr) ??
+            'Your deviation of $devStr is significantly above benchmarks. Please review your driving technique carefully.',
         severity: Severity.critical,
       ));
     }
 
     // ─── 2. Terrain-specific feedback ────────────────────────────
     if (summary.uphillSegments > 0 && summary.avgDeviationUphill > 12.0) {
+      final d = summary.avgDeviationUphill.toStringAsFixed(2);
       insights.add(CoachingInsight(
         icon: InsightIcon.terrain,
-        title: 'Uphill Driving',
-        message:
-            'Your uphill deviation (${summary.avgDeviationUphill.toStringAsFixed(2)}) '
-            'is elevated. On inclines, maintain steady throttle input and '
-            'avoid sudden acceleration. Use lower gears for consistent speed.',
+        title: l10n?.coachUphillTitle ?? 'Uphill Driving',
+        message: l10n?.coachUphillMsg(d) ??
+            'Your uphill deviation ($d) is elevated. On inclines, maintain steady throttle input and avoid sudden acceleration. Use lower gears for consistent speed.',
         severity: Severity.warning,
       ));
     }
-    if (summary.downhillSegments > 0 &&
-        summary.avgDeviationDownhill > 12.0) {
+    if (summary.downhillSegments > 0 && summary.avgDeviationDownhill > 12.0) {
+      final d = summary.avgDeviationDownhill.toStringAsFixed(2);
       insights.add(CoachingInsight(
         icon: InsightIcon.terrain,
-        title: 'Downhill Driving',
-        message:
-            'Your downhill deviation (${summary.avgDeviationDownhill.toStringAsFixed(2)}) '
-            'suggests aggressive braking or speed surges. Use engine braking '
-            'and maintain controlled speed on descents.',
+        title: l10n?.coachDownhillTitle ?? 'Downhill Driving',
+        message: l10n?.coachDownhillMsg(d) ??
+            'Your downhill deviation ($d) suggests aggressive braking or speed surges. Use engine braking and maintain controlled speed on descents.',
         severity: Severity.warning,
       ));
     }
     if (summary.plainSegments > 0 && summary.avgDeviationPlain > 12.0) {
+      final d = summary.avgDeviationPlain.toStringAsFixed(2);
       insights.add(CoachingInsight(
         icon: InsightIcon.terrain,
-        title: 'Plain Road Driving',
-        message:
-            'Your plain road deviation (${summary.avgDeviationPlain.toStringAsFixed(2)}) '
-            'is above benchmark. On flat roads, maintain even speed and '
-            'smooth steering to reduce lateral forces.',
+        title: l10n?.coachPlainTitle ?? 'Plain Road Driving',
+        message: l10n?.coachPlainMsg(d) ??
+            'Your plain road deviation ($d) is above benchmark. On flat roads, maintain even speed and smooth steering to reduce lateral forces.',
         severity: Severity.warning,
       ));
     }
@@ -102,54 +97,19 @@ class CoachingEngine {
         }
       }
       if (worst != null && worstDev > 10.0) {
+        final num = worst.segmentIndex + 1;
+        final dStr = worstDev.toStringAsFixed(2);
         insights.add(CoachingInsight(
           icon: InsightIcon.focus,
-          title: 'Worst Segment: #${worst.segmentIndex + 1}',
-          message:
-              'Segment ${worst.segmentIndex + 1} (${worst.terrain}) had the '
-              'highest deviation of ${worstDev.toStringAsFixed(2)}. Review your '
-              'driving behaviour in that section — check for sudden braking, '
-              'sharp turns, or speed variations.',
+          title: l10n?.coachWorstSegTitle(num) ?? 'Worst Segment: #$num',
+          message: l10n?.coachWorstSegMsg(num, worst.terrain, dStr) ??
+              'Segment $num (${worst.terrain}) had the highest deviation of $dStr. Review your driving behaviour in that section — check for sudden braking, sharp turns, or speed variations.',
           severity: Severity.warning,
         ));
       }
     }
 
-    // ─── 4. Cluster distribution insight ─────────────────────────
-    if (summary.cluster0Percentage > 70) {
-      insights.add(CoachingInsight(
-        icon: InsightIcon.info,
-        title: 'Driving Pattern: Cluster 0 Dominant',
-        message:
-            '${summary.cluster0Percentage.toStringAsFixed(0)}% of your segments '
-            'matched Cluster 0, indicating a consistent driving style. '
-            'This is typical of steady, predictable driving.',
-        severity: Severity.positive,
-      ));
-    } else if (summary.cluster1Percentage > 70) {
-      insights.add(CoachingInsight(
-        icon: InsightIcon.info,
-        title: 'Driving Pattern: Cluster 1 Dominant',
-        message:
-            '${summary.cluster1Percentage.toStringAsFixed(0)}% of your segments '
-            'matched Cluster 1. This pattern may indicate more dynamic driving. '
-            'Monitor your deviation scores closely.',
-        severity: Severity.neutral,
-      ));
-    } else {
-      insights.add(CoachingInsight(
-        icon: InsightIcon.info,
-        title: 'Mixed Driving Pattern',
-        message:
-            'Your driving showed a mix of patterns — '
-            '${summary.cluster0Percentage.toStringAsFixed(0)}% Cluster 0 and '
-            '${summary.cluster1Percentage.toStringAsFixed(0)}% Cluster 1. '
-            'This suggests varied road and traffic conditions.',
-        severity: Severity.neutral,
-      ));
-    }
-
-    // ─── 5. High-deviation segments count ────────────────────────
+    // ─── 4. High-deviation segments count ────────────────────────
     int highDevCount = 0;
     for (final seg in segments) {
       final d = seg.matchedCluster == 0
@@ -161,26 +121,22 @@ class CoachingEngine {
       final pct = (highDevCount / segments.length * 100).toStringAsFixed(0);
       insights.add(CoachingInsight(
         icon: InsightIcon.alert,
-        title: '$highDevCount High-Deviation Segments',
-        message:
-            '$pct% of your segments exceeded a deviation of 15. '
-            'Focus on smoother transitions between acceleration, braking, '
-            'and steering to bring these within benchmark range.',
+        title: l10n?.coachHighDevSegsTitle(highDevCount) ?? '$highDevCount High-Deviation Segments',
+        message: l10n?.coachHighDevSegsMsg(pct) ??
+            '$pct% of your segments exceeded a deviation of 15. Focus on smoother transitions between acceleration, braking, and steering to bring these within benchmark range.',
         severity: highDevCount > segments.length / 2
             ? Severity.critical
             : Severity.warning,
       ));
     }
 
-    // ─── 6. Short trip warning ───────────────────────────────────
+    // ─── 5. Short trip warning ───────────────────────────────────
     if (summary.validSegments < 5) {
       insights.add(CoachingInsight(
         icon: InsightIcon.info,
-        title: 'Short Trip',
-        message:
-            'Only ${summary.validSegments} segments were recorded. '
-            'Longer trips provide more accurate benchmarking data. '
-            'Try recording trips of at least 10 km.',
+        title: l10n?.coachShortTripTitle ?? 'Short Trip',
+        message: l10n?.coachShortTripMsg(summary.validSegments) ??
+            'Only ${summary.validSegments} segments were recorded. Longer trips provide more accurate benchmarking data. Try recording trips of at least 10 km.',
         severity: Severity.neutral,
       ));
     }

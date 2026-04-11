@@ -6,6 +6,7 @@ import '../../models/trip_model.dart';
 import '../../providers/trip_provider.dart';
 import '../../services/csv_export_service.dart';
 import '../theme/app_colors.dart';
+import 'data_viewer_screen.dart';
 
 class AdminCollectionScreen extends StatefulWidget {
   const AdminCollectionScreen({super.key});
@@ -77,6 +78,40 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
       if (mounted) {
         setState(() => _exportingTripId = null);
       }
+    }
+  }
+
+  Future<void> _confirmDelete(DataCollectionTrip trip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Trip?'),
+        content: const Text(
+          'This will permanently delete all data for this collection trip including segments and raw data.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.alert),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await context.read<TripProvider>().deleteTrip(trip.tripId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Trip deleted'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      _loadTrips();
     }
   }
 
@@ -199,21 +234,45 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 8),
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
-                                        onPressed: _exportingTripId == trip.tripId
-                                            ? null
-                                            : () => _exportTrip(trip.tripId),
-                                        icon: _exportingTripId == trip.tripId
-                                            ? const SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
-                                              )
-                                            : const Icon(Icons.download_rounded),
-                                        label: const Text('Export CSV'),
-                                      ),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        TextButton.icon(
+                                          onPressed: () => Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => DataViewerScreen(
+                                                tripId: trip.tripId,
+                                                title: '${trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername} — ${dateText}',
+                                              ),
+                                            ),
+                                          ),
+                                          icon: const Icon(Icons.table_chart_rounded, size: 16),
+                                          label: const Text('View Data'),
+                                        ),
+                                        TextButton.icon(
+                                          onPressed: _exportingTripId == trip.tripId
+                                              ? null
+                                              : () => _exportTrip(trip.tripId),
+                                          icon: _exportingTripId == trip.tripId
+                                              ? const SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                )
+                                              : const Icon(Icons.download_rounded, size: 16),
+                                          label: const Text('Export CSV'),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.delete_outline_rounded,
+                                            size: 20,
+                                            color: AppColors.alert.withOpacity(0.7),
+                                          ),
+                                          onPressed: () => _confirmDelete(trip),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),

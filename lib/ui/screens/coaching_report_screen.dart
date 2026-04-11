@@ -67,6 +67,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
 
   Future<void> _loadReport() async {
     final provider = context.read<TripProvider>();
+    final l10n = AppLocalizations.of(context);
 
     // 1. Load trip summary from DB
     final summary = await provider.loadTripSummary(widget.tripId);
@@ -81,7 +82,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
     final segments = await provider.getSegmentDetailsForTrip(widget.tripId);
 
     // 4. Generate rule-based coaching insights
-    final insights = CoachingEngine.analyze(summary, segments);
+    final insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
 
     if (mounted) {
       setState(() {

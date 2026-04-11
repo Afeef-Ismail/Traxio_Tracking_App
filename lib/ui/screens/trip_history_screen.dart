@@ -147,36 +147,6 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
             trip: trip,
             isDark: isDark,
             exporting: _exportingTripId == trip.tripId,
-            onDelete: () async {
-              final tripProvider = context.read<TripProvider>();
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: Text('${l10n.delete} ${l10n.startTrip}?'),
-                  content: const Text(
-                    'This will permanently delete all trip data including segments and features.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(false),
-                      child: Text(l10n.cancel),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(true),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.alert,
-                      ),
-                      child: Text(l10n.delete),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed == true) {
-                await tripProvider.deleteTrip(trip.tripId);
-                if (!mounted) return;
-                _loadTrips();
-              }
-            },
             onExportCsv: () => _exportTripCsv(trip.tripId),
             l10n: l10n,
           );
@@ -189,7 +159,6 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
 class _TripCard extends StatelessWidget {
   final TripSummary trip;
   final bool isDark;
-  final VoidCallback onDelete;
   final VoidCallback onExportCsv;
   final bool exporting;
   final AppLocalizations l10n;
@@ -197,7 +166,6 @@ class _TripCard extends StatelessWidget {
   const _TripCard({
     required this.trip,
     required this.isDark,
-    required this.onDelete,
     required this.onExportCsv,
     required this.exporting,
     required this.l10n,
@@ -276,19 +244,6 @@ class _TripCard extends StatelessWidget {
                           ),
                         ),
                       ],
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.delete_outline_rounded,
-                        size: 20,
-                        color: AppColors.alert.withOpacity(0.7),
-                      ),
-                      onPressed: onDelete,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
-                      ),
                     ),
                   ],
                 ),

@@ -59,8 +59,9 @@ dependencies:
   # HTTP
   http: ^1.2.1
 
-  # File sharing
+  # File sharing / opening
   share_plus: ^10.0.2
+  open_file: ^3.3.2
 
   # Environment variables
   flutter_dotenv: ^5.1.0

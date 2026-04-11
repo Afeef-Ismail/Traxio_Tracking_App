@@ -217,6 +217,13 @@ class DbHelper {
       // Seed default clusters from existing benchmark_config
       await _seedDefaultClusters(db);
     }
+    if (oldVersion < 9) {
+      // Add vehicle_type and vehicle_number to users table
+      await db.execute(
+          "ALTER TABLE users ADD COLUMN vehicle_type TEXT NOT NULL DEFAULT ''");
+      await db.execute(
+          "ALTER TABLE users ADD COLUMN vehicle_number TEXT NOT NULL DEFAULT ''");
+    }
   }
 
   /// Create the users table.
@@ -228,7 +235,9 @@ class DbHelper {
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL CHECK(role IN ('admin', 'driver')),
         created_at INTEGER NOT NULL,
-        bus_number TEXT NOT NULL DEFAULT ''
+        bus_number TEXT NOT NULL DEFAULT '',
+        vehicle_type TEXT NOT NULL DEFAULT '',
+        vehicle_number TEXT NOT NULL DEFAULT ''
       )
     ''');
     await db.execute(
@@ -1181,7 +1190,9 @@ class DbHelper {
 
   /// Create a new user. Returns the inserted row ID.
   Future<int> createUser(String username, String passwordHash, String role,
-      {String busNumber = ''}) async {
+      {String busNumber = '',
+      String vehicleType = '',
+      String vehicleNumber = ''}) async {
     final db = await database;
     return await db.insert('users', {
       'username': username,
@@ -1189,6 +1200,8 @@ class DbHelper {
       'role': role,
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'bus_number': busNumber,
+      'vehicle_type': vehicleType,
+      'vehicle_number': vehicleNumber,
     });
   }
 
@@ -1198,6 +1211,18 @@ class DbHelper {
     return await db.update(
       'users',
       {'bus_number': busNumber},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  /// Update the vehicle type and number for a driver.
+  Future<int> updateDriverVehicle(
+      int userId, String vehicleType, String vehicleNumber) async {
+    final db = await database;
+    return await db.update(
+      'users',
+      {'vehicle_type': vehicleType, 'vehicle_number': vehicleNumber},
       where: 'id = ?',
       whereArgs: [userId],
     );

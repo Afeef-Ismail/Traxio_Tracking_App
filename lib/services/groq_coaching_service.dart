@@ -7,20 +7,20 @@ import '../models/trip_model.dart';
 import '../providers/trip_provider.dart';
 import '../database/db_helper.dart';
 
-/// Service that calls the xAI Grok API to generate a concise AI coaching
+/// Service that calls the Groq API to generate a concise AI coaching
 /// report for a completed trip.
 ///
-/// Uses the OpenAI-compatible REST API directly.
+/// Uses the OpenAI-compatible REST API directly (api.groq.com).
 ///
 /// Behaviour:
 ///   - Builds a structured prompt from TripSummary + segment details.
 ///   - Calls the model with a 30-second timeout; returns null on failure.
 ///   - Caches the response in the DB `coaching_report` column.
 ///   - On revisit, returns the cached report instantly.
-class GrokCoachingService {
+class GroqCoachingService {
   static final DbHelper _db = DbHelper();
 
-  static String get _apiKey => dotenv.env['GROK_API_KEY'] ?? '';
+  static String get _apiKey => dotenv.env['GROQ_API_KEY'] ?? '';
 
   /// Get the AI coaching report for a trip.
   /// Returns cached report if available, else generates a new one.
@@ -47,7 +47,7 @@ class GrokCoachingService {
     try {
       final key = _apiKey;
       if (key.isEmpty) {
-        print('[GrokCoaching] No API key configured');
+        print('[GroqCoaching] No API key configured');
         return null;
       }
 
@@ -73,7 +73,7 @@ class GrokCoachingService {
         'max_tokens': 2048,
       });
 
-      print('[GrokCoaching] Sending request...');
+      print('[GroqCoaching] Sending request...');
       final response = await http
           .post(
             url,
@@ -86,7 +86,7 @@ class GrokCoachingService {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
-        print('[GrokCoaching] HTTP ${response.statusCode}: ${response.body}');
+        print('[GroqCoaching] HTTP ${response.statusCode}: ${response.body}');
         return null;
       }
 
@@ -101,9 +101,9 @@ class GrokCoachingService {
       await _db.updateCoachingReport(summary.tripId, text);
       return text;
     } catch (e, st) {
-      print('[GrokCoaching] ERROR: $e');
+      print('[GroqCoaching] ERROR: $e');
       print(
-          '[GrokCoaching] Stack: ${st.toString().split('\n').take(3).join('\n')}');
+          '[GroqCoaching] Stack: ${st.toString().split('\n').take(3).join('\n')}');
       return null;
     }
   }

@@ -23,7 +23,7 @@ IconData vehicleTypeIcon(String vehicleType) {
   }
 }
 
-const _vehicleTypes = ['Bus', 'Car', 'Truck', 'Auto', 'Bike', 'Other'];
+const _vehicleTypes = ['Bus', 'Minibus', 'Car', 'Auto', 'Bike', 'Other'];
 
 /// Admin screen for managing benchmark clusters.
 class ClusterManagementScreen extends StatefulWidget {
@@ -65,7 +65,18 @@ class _ClusterManagementScreenState extends State<ClusterManagementScreen> {
   }
 
   Future<void> _toggleActive(ClusterDefinition cluster) async {
-    await _db.updateCluster(cluster.copyWith(isActive: !cluster.isActive));
+    final newActive = !cluster.isActive;
+    await _db.updateCluster(cluster.copyWith(isActive: newActive));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newActive
+              ? '${cluster.name} activated'
+              : '${cluster.name} deactivated — will not be used in future trips'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
     _loadClusters();
   }
 

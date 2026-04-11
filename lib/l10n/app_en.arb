@@ -73,7 +73,7 @@
   "shareCSV": "Share",
   "loading": "Loading...",
   "retry": "Retry",
-  "aiCoachPowered": "Powered by Grok",
+  "aiCoachPowered": "Powered by Groq",
   "locationServiceDisabled": "Location Service Disabled",
   "locationServiceMessage": "GPS must be enabled to record a trip. Please turn on Location in your device settings.",
   "openSettings": "Open Settings",

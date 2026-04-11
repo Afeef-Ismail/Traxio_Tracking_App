@@ -5,7 +5,7 @@ import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
 import '../../analytics/coaching_engine.dart';
 import '../../analytics/score_calculator.dart';
-import '../../services/grok_coaching_service.dart';
+import '../../services/groq_coaching_service.dart';
 import '../../database/db_helper.dart';
 import '../../models/cluster_model.dart';
 import '../widgets/summary_card.dart';
@@ -36,7 +36,10 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
   String? _aiReport;
   bool _aiLoading = false;
   int _tripScore = -1;
-  List<ClusterDefinition> _activeClusters = [];
+  // Clusters that were actually scored in this trip (by matched_cluster_name).
+  // May include clusters now deactivated; _inactiveClusterNames tracks those.
+  List<ClusterDefinition> _scoredClusters = [];
+  Set<String> _inactiveClusterNames = {};
   Map<String, int> _clusterMatchCounts = {};
   int _totalMatchedSegments = 0;
 
@@ -51,21 +54,27 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     final summary = provider.lastSummary;
     if (summary == null) return;
 
-    // Load active clusters filtered by trip vehicle type
-    final allActive = await DbHelper().getActiveClusters();
-    final vehicleType = summary.vehicleType;
-    final filtered = vehicleType.isEmpty
-        ? allActive
-        : allActive
-            .where((c) => c.vehicleType.isEmpty || c.vehicleType == vehicleType)
-            .toList();
+    // Load all clusters (active + inactive) to correctly display historical trips.
+    // A cluster deactivated after the trip was recorded still appears with its score,
+    // but is labelled "(inactive)" in grey.
+    final allClusters = await DbHelper().getAllClusters();
+    final activeNames = {for (final c in allClusters) if (c.isActive) c.name};
     final matchCounts = await DbHelper().getClusterMatchCounts(summary.tripId);
-    final totalMatched =
-        matchCounts.values.fold(0, (a, b) => a + b);
+    final totalMatched = matchCounts.values.fold(0, (a, b) => a + b);
+
+    // Only show clusters that were actually scored for this trip.
+    final scored = allClusters
+        .where((c) => matchCounts.containsKey(c.name))
+        .toList();
+    final inactiveNames = scored
+        .where((c) => !activeNames.contains(c.name))
+        .map((c) => c.name)
+        .toSet();
 
     if (mounted) {
       setState(() {
-        _activeClusters = filtered;
+        _scoredClusters = scored;
+        _inactiveClusterNames = inactiveNames;
         _clusterMatchCounts = matchCounts;
         _totalMatchedSegments = totalMatched > 0 ? totalMatched : summary.validSegments;
       });
@@ -87,7 +96,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     }
 
     // Fetch AI report (cached or new)
-    final report = await GrokCoachingService.getCoachingReport(
+    final report = await GroqCoachingService.getCoachingReport(
       summary,
       segments,
     );
@@ -422,8 +431,8 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
   }
 
   Widget _buildClusterCards(TripSummary summary, bool isDark) {
-    // Use active clusters if available, else fall back to stored cluster0/cluster1 data
-    if (_activeClusters.isEmpty) {
+    // Fall back to stored cluster0/cluster1 percentages when no matched_cluster_name data
+    if (_scoredClusters.isEmpty) {
       return Row(children: [
         Expanded(
           child: _ClusterCard(
@@ -445,22 +454,23 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
       ]);
     }
 
-    final cards = _activeClusters.map((c) {
+    final cards = _scoredClusters.map((c) {
       final count = _clusterMatchCounts[c.name] ?? 0;
       final pct = _totalMatchedSegments > 0
           ? count * 100.0 / _totalMatchedSegments
           : 0.0;
+      final inactive = _inactiveClusterNames.contains(c.name);
       return _ClusterCard(
         clusterName: c.name,
         percentage: pct,
         count: count,
         isDark: isDark,
+        inactive: inactive,
       );
     }).toList();
 
     if (cards.length == 1) return cards.first;
 
-    // 2 or more: 2-column wrap
     return LayoutBuilder(builder: (context, constraints) {
       final cardWidth = (constraints.maxWidth - 12) / 2;
       return Wrap(
@@ -508,12 +518,14 @@ class _ClusterCard extends StatelessWidget {
   final double percentage;
   final int count;
   final bool isDark;
+  final bool inactive;
 
   const _ClusterCard({
     required this.clusterName,
     required this.percentage,
     required this.count,
     required this.isDark,
+    this.inactive = false,
   });
 
   @override
@@ -524,7 +536,9 @@ class _ClusterCard extends StatelessWidget {
         color: isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+          color: inactive
+              ? (isDark ? AppColors.dividerDark : AppColors.dividerLight)
+              : (isDark ? AppColors.dividerDark : AppColors.dividerLight),
         ),
       ),
       child: Column(
@@ -536,18 +550,32 @@ class _ClusterCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: isDark
-                  ? AppColors.textOnDarkSecondary
-                  : AppColors.textMuted,
+              color: inactive
+                  ? AppColors.textMuted
+                  : (isDark
+                      ? AppColors.textOnDarkSecondary
+                      : AppColors.textMuted),
             ),
           ),
+          if (inactive) ...[
+            const SizedBox(height: 2),
+            Text(
+              '(inactive)',
+              style: TextStyle(
+                fontSize: 10,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           Text(
             '${percentage.toStringAsFixed(1)}%',
             style: TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.w700,
-              color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+              color: inactive
+                  ? AppColors.textMuted
+                  : (isDark ? AppColors.textOnDark : AppColors.textPrimary),
             ),
           ),
           const SizedBox(height: 2),

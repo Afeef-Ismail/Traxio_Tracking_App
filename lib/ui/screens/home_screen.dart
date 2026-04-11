@@ -159,9 +159,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _loadCalibrationStatus();
     }
 
-    // Select vehicle type if multiple types exist across active clusters
+    // Use driver's saved vehicle type if set; otherwise prompt
     String vehicleType = '';
-    if (_activeVehicleTypes.length > 1) {
+    final profileVehicleType =
+        context.read<AuthProvider>().currentUser?['vehicle_type'] as String? ??
+            '';
+    if (profileVehicleType.isNotEmpty) {
+      vehicleType = profileVehicleType;
+    } else if (_activeVehicleTypes.length > 1) {
       vehicleType = await _showVehicleTypeSelection() ?? '';
       if (!mounted) return;
     } else if (_activeVehicleTypes.length == 1) {

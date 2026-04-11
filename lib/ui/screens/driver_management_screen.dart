@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../config/constants.dart';
 import '../../database/db_helper.dart';
 import '../theme/app_colors.dart';
+import 'cluster_management_screen.dart' show vehicleTypeIcon;
+
+const _vehicleTypes = ['Bus', 'Minibus', 'Car', 'Auto', 'Bike', 'Other'];
 
 String? _validateBusNumber(String value) {
   if (value.isEmpty) return null;
@@ -106,13 +109,14 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
     }
   }
 
-  Future<void> _showEditBusNumberDialog(Map<String, dynamic> driver) async {
+  Future<void> _showEditVehicleDialog(Map<String, dynamic> driver) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (_) => _EditBusNumberDialog(
+      builder: (_) => _EditVehicleDialog(
         driverId: driver['id'] as int,
         username: driver['username'] as String,
-        currentBusNumber: driver['bus_number'] as String? ?? '',
+        currentVehicleType: driver['vehicle_type'] as String? ?? '',
+        currentVehicleNumber: driver['vehicle_number'] as String? ?? '',
       ),
     );
     if (result == true && mounted) {
@@ -202,7 +206,8 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
       itemBuilder: (context, index) {
         final driver = _drivers[index];
         final username = driver['username'] as String;
-        final busNumber = driver['bus_number'] as String? ?? '';
+        final vehicleType = driver['vehicle_type'] as String? ?? '';
+        final vehicleNumber = driver['vehicle_number'] as String? ?? '';
         final createdAt = DateTime.fromMillisecondsSinceEpoch(
           driver['created_at'] as int,
         );
@@ -245,15 +250,29 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (busNumber.isNotEmpty)
-                  Text(
-                    'Bus: $busNumber',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark
-                          ? AppColors.textOnDarkSecondary
-                          : AppColors.textMuted,
-                    ),
+                if (vehicleType.isNotEmpty)
+                  Row(
+                    children: [
+                      Icon(
+                        vehicleTypeIcon(vehicleType),
+                        size: 14,
+                        color: isDark
+                            ? AppColors.textOnDarkSecondary
+                            : AppColors.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        vehicleNumber.isNotEmpty
+                            ? '$vehicleType · $vehicleNumber'
+                            : vehicleType,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppColors.textOnDarkSecondary
+                              : AppColors.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 Text(
                   'Added $dateStr',
@@ -271,14 +290,14 @@ class _DriverManagementScreenState extends State<DriverManagementScreen> {
               children: [
                 IconButton(
                   icon: Icon(
-                    Icons.edit_outlined,
+                    Icons.commute_outlined,
                     size: 20,
                     color: isDark
                         ? AppColors.textOnDarkSecondary
                         : AppColors.textMuted,
                   ),
-                  tooltip: 'Edit Bus Number',
-                  onPressed: () => _showEditBusNumberDialog(driver),
+                  tooltip: 'Edit Vehicle',
+                  onPressed: () => _showEditVehicleDialog(driver),
                 ),
                 IconButton(
                   icon: Icon(
@@ -307,17 +326,18 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
   final DbHelper _db = DbHelper();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _busNumberController = TextEditingController();
+  final _vehicleNumberController = TextEditingController();
   bool _isLoading = false;
   bool _obscure = true;
   String? _error;
   String? _busWarning;
+  String _selectedVehicleType = '';
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
-    _busNumberController.dispose();
+    _vehicleNumberController.dispose();
     super.dispose();
   }
 
@@ -355,7 +375,8 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
         username,
         hash,
         'driver',
-        busNumber: _busNumberController.text.trim(),
+        vehicleType: _selectedVehicleType,
+        vehicleNumber: _vehicleNumberController.text.trim(),
       );
       if (mounted) {
         Navigator.of(context).pop(true);
@@ -376,6 +397,7 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextField(
               controller: _usernameController,
@@ -414,13 +436,72 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
                 ),
               ),
             ),
+            const SizedBox(height: 20),
+            const Text(
+              'Vehicle Type (optional)',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _vehicleTypes.map((type) {
+                final selected = _selectedVehicleType == type;
+                return GestureDetector(
+                  onTap: _isLoading
+                      ? null
+                      : () => setState(() => _selectedVehicleType =
+                          selected ? '' : type),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppColors.primary.withOpacity(0.15)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: selected
+                            ? AppColors.primary
+                            : Colors.grey.withOpacity(0.4),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          vehicleTypeIcon(type),
+                          size: 16,
+                          color: selected
+                              ? AppColors.primary
+                              : Colors.grey,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          type,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: selected
+                                ? AppColors.primary
+                                : null,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
             const SizedBox(height: 16),
             TextField(
-              controller: _busNumberController,
+              controller: _vehicleNumberController,
               textCapitalization: TextCapitalization.characters,
               enabled: !_isLoading,
               decoration: InputDecoration(
-                labelText: 'Bus Number (optional)',
+                labelText: 'Vehicle Number (optional)',
                 hintText: 'e.g. KL-11-A-1234',
                 prefixIcon: const Icon(Icons.directions_bus_outlined, size: 20),
                 helperText: _busWarning,
@@ -463,24 +544,27 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
   }
 }
 
-class _EditBusNumberDialog extends StatefulWidget {
+class _EditVehicleDialog extends StatefulWidget {
   final int driverId;
   final String username;
-  final String currentBusNumber;
+  final String currentVehicleType;
+  final String currentVehicleNumber;
 
-  const _EditBusNumberDialog({
+  const _EditVehicleDialog({
     required this.driverId,
     required this.username,
-    required this.currentBusNumber,
+    required this.currentVehicleType,
+    required this.currentVehicleNumber,
   });
 
   @override
-  State<_EditBusNumberDialog> createState() => _EditBusNumberDialogState();
+  State<_EditVehicleDialog> createState() => _EditVehicleDialogState();
 }
 
-class _EditBusNumberDialogState extends State<_EditBusNumberDialog> {
+class _EditVehicleDialogState extends State<_EditVehicleDialog> {
   final DbHelper _db = DbHelper();
-  late final TextEditingController _controller;
+  late final TextEditingController _numberController;
+  late String _selectedType;
   bool _isLoading = false;
   String? _busWarning;
   String? _error;
@@ -488,12 +572,14 @@ class _EditBusNumberDialogState extends State<_EditBusNumberDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.currentBusNumber);
+    _selectedType = widget.currentVehicleType;
+    _numberController =
+        TextEditingController(text: widget.currentVehicleNumber);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _numberController.dispose();
     super.dispose();
   }
 
@@ -503,7 +589,8 @@ class _EditBusNumberDialogState extends State<_EditBusNumberDialog> {
       _error = null;
     });
     try {
-      await _db.updateBusNumber(widget.driverId, _controller.text.trim());
+      await _db.updateDriverVehicle(
+          widget.driverId, _selectedType, _numberController.text.trim());
       if (mounted) {
         Navigator.of(context).pop(true);
       }
@@ -519,34 +606,92 @@ class _EditBusNumberDialogState extends State<_EditBusNumberDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Edit Bus Number — ${widget.username}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _controller,
-            textCapitalization: TextCapitalization.characters,
-            autofocus: true,
-            enabled: !_isLoading,
-            decoration: InputDecoration(
-              labelText: 'Bus Number',
-              hintText: 'e.g. KL-11-A-1234',
-              errorText: _error,
-              prefixIcon: const Icon(Icons.directions_bus_outlined, size: 20),
-              helperText: _busWarning,
-              helperStyle: const TextStyle(color: Colors.orange, fontSize: 11),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+      title: Text('Edit Vehicle — ${widget.username}'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Vehicle Type',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
-            onChanged: (v) {
-              final warn = _validateBusNumber(v);
-              if (warn != _busWarning) {
-                setState(() => _busWarning = warn);
-              }
-            },
-          ),
-        ],
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _vehicleTypes.map((type) {
+                final selected = _selectedType == type;
+                return GestureDetector(
+                  onTap: _isLoading
+                      ? null
+                      : () => setState(
+                          () => _selectedType = selected ? '' : type),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppColors.primary.withOpacity(0.15)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: selected
+                            ? AppColors.primary
+                            : Colors.grey.withOpacity(0.4),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          vehicleTypeIcon(type),
+                          size: 16,
+                          color: selected ? AppColors.primary : Colors.grey,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          type,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: selected ? AppColors.primary : null,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _numberController,
+              textCapitalization: TextCapitalization.characters,
+              autofocus: false,
+              enabled: !_isLoading,
+              decoration: InputDecoration(
+                labelText: 'Vehicle Number',
+                hintText: 'e.g. KL-11-A-1234',
+                errorText: _error,
+                prefixIcon: const Icon(Icons.directions_bus_outlined, size: 20),
+                helperText: _busWarning,
+                helperStyle: const TextStyle(color: Colors.orange, fontSize: 11),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onChanged: (v) {
+                final warn = _validateBusNumber(v);
+                if (warn != _busWarning) {
+                  setState(() => _busWarning = warn);
+                }
+              },
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(

@@ -193,7 +193,8 @@ class TripProvider extends ChangeNotifier {
         segmentDistanceM: _tripProcessor.segmentDistanceM,
       );
 
-      // Load benchmark features from DB (cached for the trip)
+      // Always load fresh cluster data — clear any stale cache from previous trip
+      _tripProcessor.clearBenchmarkCache();
       await _tripProcessor.loadBenchmarks(vehicleType: vehicleType);
 
       // Listen to sensor samples (same stream interface for both)

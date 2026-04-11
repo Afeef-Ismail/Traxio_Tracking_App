@@ -18,3 +18,25 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
+
+// Workaround: OneDrive sets ReadOnly on build directories, which prevents
+// Gradle from deleting them before rebuild. Clear the attribute first.
+if (System.properties['os.name'].toLowerCase().contains('windows')) {
+    allprojects {
+        tasks.configureEach { task ->
+            if (task.name.toLowerCase().contains('clean') ||
+                task.name.toLowerCase().contains('merge') ||
+                task.name.toLowerCase().contains('bundle')) {
+                task.doFirst {
+                    try {
+                        def dir = project.buildDir
+                        if (dir.exists()) {
+                            ['cmd', '/c', "attrib -R \"${dir.absolutePath}\" /s /d"]
+                                .execute().waitFor()
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+    }
+}

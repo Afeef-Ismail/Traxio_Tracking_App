@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/trip_provider.dart';
 import '../../database/db_helper.dart';
 import '../../models/trip_model.dart';
+import '../../models/segment_model.dart';
+import '../../analytics/coaching_engine.dart';
 import '../theme/app_colors.dart';
 import '../widgets/trip_score_chart.dart';
 
@@ -19,6 +22,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   final DbHelper _db = DbHelper();
   bool _loading = true;
   List<TripSummary> _trips = [];
+  List<CoachingInsight> _latestInsights = [];
   String _driverName = '';
   String _busNumber = '';
 
@@ -43,6 +47,40 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         _trips = trips;
         _loading = false;
       });
+    }
+
+    // Compute rule-based coaching insights for the most recent trip.
+    // Only loads segments + scores (no per-segment feature queries needed).
+    if (trips.isNotEmpty && mounted) {
+      try {
+        final recent = trips.first;
+        final l10n = AppLocalizations.of(context);
+        final segs = await _db.getSegmentsForTrip(recent.tripId);
+        if (!mounted) return;
+        final scores = await _db.getScoresForTrip(recent.tripId);
+        if (!mounted) return;
+        final scoreMap = <int, SegmentScore>{
+          for (final s in scores) s.segmentId: s
+        };
+        final details = <SegmentDetail>[];
+        for (final seg in segs) {
+          if (!seg.isValid || seg.id == null) continue;
+          final sc = scoreMap[seg.id!];
+          details.add(SegmentDetail(
+            segmentIndex: seg.segmentIndex,
+            terrain: seg.terrain,
+            features: const {},
+            cluster0Deviation: sc?.cluster0Deviation ?? 0.0,
+            cluster1Deviation: sc?.cluster1Deviation ?? 0.0,
+            matchedCluster: sc?.matchedCluster ?? -1,
+            nearestLandmark: seg.nearestLandmark,
+          ));
+        }
+        final insights = CoachingEngine.analyze(recent, details, l10n: l10n);
+        if (mounted) setState(() => _latestInsights = insights);
+      } catch (_) {
+        // Insights are optional — ignore errors
+      }
     }
   }
 
@@ -72,7 +110,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     const SizedBox(height: 20),
                     _buildScoreHistory(isDark),
                     const SizedBox(height: 20),
-                    _buildLatestAiCoaching(isDark, l10n),
+                    _buildLatestTripInsights(isDark, l10n),
                     const SizedBox(height: 20),
                     _buildTerrainBreakdown(isDark, l10n),
                     const SizedBox(height: 20),
@@ -231,67 +269,18 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Widget _buildLatestAiCoaching(bool isDark, AppLocalizations l10n) {
-    // Find the most recent trip with a cached coaching report
-    String? cachedReport;
-    for (final trip in _trips) {
-      if (trip.coachingReport.isNotEmpty) {
-        cachedReport = trip.coachingReport;
-        break;
-      }
-    }
+  Widget _buildLatestTripInsights(bool isDark, AppLocalizations l10n) {
+    if (_latestInsights.isEmpty) return const SizedBox.shrink();
 
-    if (cachedReport == null || cachedReport.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    // Show up to 3 insight cards for the most recent trip.
+    final toShow = _latestInsights.take(3).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(l10n.aiCoach, isDark),
+        _sectionTitle(l10n.coachingReport, isDark),
         const SizedBox(height: 10),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.darkCard : AppColors.lightCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppColors.primary.withOpacity(0.3),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome_rounded,
-                      size: 18, color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    'AI Coach',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                cachedReport,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  color: isDark
-                      ? AppColors.textOnDarkSecondary
-                      : AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
+        ...toShow.map((insight) => _InsightCard(insight: insight, isDark: isDark)),
       ],
     );
   }
@@ -626,5 +615,91 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     if (dev < 5.0) return AppColors.success;
     if (dev < 15.0) return AppColors.warning;
     return AppColors.alert;
+  }
+}
+
+// ─── Insight card for rule-based coaching insights ────────────────────────
+
+class _InsightCard extends StatelessWidget {
+  final CoachingInsight insight;
+  final bool isDark;
+
+  const _InsightCard({required this.insight, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _color(insight.severity);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withOpacity(0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(_icon(insight.icon), size: 18, color: accent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  insight.title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  insight.message,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: isDark
+                        ? AppColors.textOnDarkSecondary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _color(Severity s) {
+    switch (s) {
+      case Severity.positive: return AppColors.success;
+      case Severity.neutral:  return AppColors.primary;
+      case Severity.warning:  return AppColors.warning;
+      case Severity.critical: return AppColors.alert;
+    }
+  }
+
+  IconData _icon(InsightIcon i) {
+    switch (i) {
+      case InsightIcon.trophy:   return Icons.emoji_events_rounded;
+      case InsightIcon.thumbsUp: return Icons.thumb_up_alt_rounded;
+      case InsightIcon.warning:  return Icons.warning_rounded;
+      case InsightIcon.alert:    return Icons.error_rounded;
+      case InsightIcon.terrain:  return Icons.terrain_rounded;
+      case InsightIcon.focus:    return Icons.center_focus_strong_rounded;
+      case InsightIcon.info:     return Icons.info_rounded;
+    }
   }
 }

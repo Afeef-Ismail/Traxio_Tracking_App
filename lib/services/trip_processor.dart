@@ -316,12 +316,20 @@ class TripProcessor {
         terrain: terrain,
       );
 
+      // bestClusterName can be '' if no cluster features are cached (empty
+      // cluster_features table). Fall back to the first active cluster name so
+      // matched_cluster_name is never stored as an empty string, which would
+      // cause getClusterMatchCounts() to return an empty map.
+      final clusterName = dynResult.bestClusterName.isNotEmpty
+          ? dynResult.bestClusterName
+          : _activeClusters.first.name;
+
       score = SegmentScore(
         segmentId: segmentId,
         cluster0Deviation: dynResult.cluster0Deviation,
         cluster1Deviation: dynResult.cluster1Deviation,
         matchedCluster: dynResult.matchedClusterIndex,
-        matchedClusterName: dynResult.bestClusterName,
+        matchedClusterName: clusterName,
       );
     } else {
       // Fallback: use hardcoded benchmark_config (no active clusters)

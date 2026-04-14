@@ -67,24 +67,32 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
 
   Future<void> _loadReport() async {
     final provider = context.read<TripProvider>();
+    // Capture l10n synchronously before any await — after an await the context
+    // may be detached and AppLocalizations.of(context) can return null.
     final l10n = AppLocalizations.of(context);
 
-    // 1. Load trip summary from DB
-    final summary = await provider.loadTripSummary(widget.tripId);
-    if (summary == null || !mounted) return;
+    try {
+      // 1. Load trip summary from DB
+      final summary = await provider.loadTripSummary(widget.tripId);
+      if (!mounted) return;
 
-    // 2. Compute score
-    final score = summary.score >= 0
-        ? summary.score.round()
-        : ScoreCalculator.computeScore(summary.overallAvgDeviation);
+      if (summary == null) {
+        setState(() => _loading = false);
+        return;
+      }
 
-    // 3. Load segment details from DB
-    final segments = await provider.getSegmentDetailsForTrip(widget.tripId);
+      // 2. Compute score
+      final score = summary.score >= 0
+          ? summary.score.round()
+          : ScoreCalculator.computeScore(summary.overallAvgDeviation);
 
-    // 4. Generate rule-based coaching insights
-    final insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
+      // 3. Load segment details from DB
+      final segments = await provider.getSegmentDetailsForTrip(widget.tripId);
+      if (!mounted) return;
 
-    if (mounted) {
+      // 4. Generate rule-based coaching insights (synchronous)
+      final insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
+
       setState(() {
         _summary = summary;
         _tripScore = score;
@@ -92,6 +100,8 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
         _insights = insights;
         _loading = false;
       });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
     }
   }
 

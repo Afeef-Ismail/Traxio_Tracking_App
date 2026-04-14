@@ -48,48 +48,54 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
   Future<void> _loadCoaching() async {
     final provider = context.read<TripProvider>();
+    // Capture l10n synchronously before any await.
     final l10n = AppLocalizations.of(context);
     final summary = provider.lastSummary;
     if (summary == null) return;
 
-    // Load all clusters (active + inactive) to correctly display historical trips.
-    // A cluster deactivated after the trip was recorded still appears with its score,
-    // but is labelled "(inactive)" in grey.
-    final allClusters = await DbHelper().getAllClusters();
-    final activeNames = {for (final c in allClusters) if (c.isActive) c.name};
-    final matchCounts = await DbHelper().getClusterMatchCounts(summary.tripId);
-    final totalMatched = matchCounts.values.fold(0, (a, b) => a + b);
+    try {
+      // Load all clusters (active + inactive) to correctly display historical
+      // trips. A cluster deactivated after the trip was recorded still appears
+      // with its score, but is labelled "(inactive)" in grey.
+      final allClusters = await DbHelper().getAllClusters();
+      if (!mounted) return;
 
-    // Only show clusters that were actually scored for this trip.
-    final scored = allClusters
-        .where((c) => matchCounts.containsKey(c.name))
-        .toList();
-    final inactiveNames = scored
-        .where((c) => !activeNames.contains(c.name))
-        .map((c) => c.name)
-        .toSet();
+      final activeNames = {for (final c in allClusters) if (c.isActive) c.name};
+      final matchCounts = await DbHelper().getClusterMatchCounts(summary.tripId);
+      if (!mounted) return;
 
-    if (mounted) {
+      final totalMatched = matchCounts.values.fold(0, (a, b) => a + b);
+
+      // Only show clusters that were actually scored for this trip.
+      final scored = allClusters
+          .where((c) => matchCounts.containsKey(c.name))
+          .toList();
+      final inactiveNames = scored
+          .where((c) => !activeNames.contains(c.name))
+          .map((c) => c.name)
+          .toSet();
+
       setState(() {
         _scoredClusters = scored;
         _inactiveClusterNames = inactiveNames;
         _clusterMatchCounts = matchCounts;
         _totalMatchedSegments = totalMatched > 0 ? totalMatched : summary.validSegments;
       });
-    }
 
-    // Compute score
-    _tripScore = ScoreCalculator.computeScore(summary.overallAvgDeviation);
+      // Compute score
+      _tripScore = ScoreCalculator.computeScore(summary.overallAvgDeviation);
 
-    final segments =
-        await provider.getSegmentDetailsForTrip(summary.tripId);
-    final insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
+      final segments = await provider.getSegmentDetailsForTrip(summary.tripId);
+      if (!mounted) return;
 
-    if (mounted) {
+      final insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
+
       setState(() {
         _insights = insights;
         _coachingLoaded = true;
       });
+    } catch (_) {
+      if (mounted) setState(() => _coachingLoaded = true);
     }
   }
 

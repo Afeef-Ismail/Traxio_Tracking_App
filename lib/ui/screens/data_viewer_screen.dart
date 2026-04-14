@@ -3,12 +3,13 @@ import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../database/db_helper.dart';
 import '../../services/csv_export_service.dart';
+import '../../utils/feature_display_utils.dart';
 import '../theme/app_colors.dart';
 
 /// In-app data viewer for a collection trip.
 ///
-/// Loads all segments and their key feature means for the trip,
-/// then shows them in a scrollable DataTable with:
+/// Loads all segments with ALL 120+ feature columns dynamically and shows
+/// them in a bi-directionally scrollable DataTable with:
 ///   - Terrain colour-coding
 ///   - Terrain filter chips
 ///   - Column sort (tap header)
@@ -28,45 +29,59 @@ class DataViewerScreen extends StatefulWidget {
   State<DataViewerScreen> createState() => _DataViewerScreenState();
 }
 
-// One row of data shown in the table.
-class _SegmentRow {
-  final int index;
-  final String terrain;
-  final bool isValid;
-  final double distance;
-  final double speedMean;
-  final double ayMean;
-  final double axMean;
-  final double yrMean;
-  final double jxMean;
-  final double jyMean;
-  final double vvMean;
-
-  const _SegmentRow({
-    required this.index,
-    required this.terrain,
-    required this.isValid,
-    required this.distance,
-    required this.speedMean,
-    required this.ayMean,
-    required this.axMean,
-    required this.yrMean,
-    required this.jxMean,
-    required this.jyMean,
-    required this.vvMean,
-  });
-}
-
 class _DataViewerScreenState extends State<DataViewerScreen> {
   bool _loading = true;
   bool _exporting = false;
-  List<_SegmentRow> _allRows = [];
+
+  /// All rows, each is a flat map of columnKey → value.
+  List<Map<String, dynamic>> _allRows = [];
+
+  /// Ordered column keys derived from the first row.
+  List<String> _columns = [];
+
   String _terrainFilter = 'All';
-  int _sortColumnIndex = 0;
+  String _sortColumnKey = 'segment_index';
   bool _sortAscending = true;
+
   final CsvExportService _csvExportService = CsvExportService();
 
-  static const List<String> _terrainOptions = ['All', 'Plain', 'Uphill', 'Downhill'];
+  static const List<String> _terrainOptions = [
+    'All', 'Plain', 'Uphill', 'Downhill'
+  ];
+
+  /// Structural columns shown before the 120 feature columns.
+  static const List<String> _metaFirst = [
+    'segment_index',
+    'terrain',
+    'is_valid',
+    'distance_m',
+    'nearest_landmark',
+    'sample_count',
+    'duration_seconds',
+  ];
+
+  /// Human-readable label for structural / metadata columns.
+  static const Map<String, String> _metaLabels = {
+    'segment_index':   '#',
+    'terrain':         'Terrain',
+    'is_valid':        'Valid',
+    'distance_m':      'Dist (m)',
+    'nearest_landmark':'Landmark',
+    'sample_count':    'Samples',
+    'duration_seconds':'Duration (s)',
+    'segment_id':      'Seg ID',
+    'trip_id':         'Trip ID',
+    'mode':            'Mode',
+    'start_lat':       'Lat Start',
+    'start_lon':       'Lon Start',
+    'end_lat':         'Lat End',
+    'end_lon':         'Lon End',
+    'start_time':      'Start ms',
+    'end_time':        'End ms',
+  };
+
+  String _displayName(String key) =>
+      _metaLabels[key] ?? FeatureDisplayUtils.getDisplayName(key);
 
   @override
   void initState() {
@@ -76,69 +91,69 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
 
   Future<void> _loadData() async {
     final db = DbHelper();
-    final segments = await db.getSegmentsForTrip(widget.tripId);
+    // getSegmentsWithFeaturesForTrip returns all segments with all feature
+    // columns merged into one flat map per row.
+    final rows = await db.getSegmentsWithFeaturesForTrip(widget.tripId);
 
-    final rows = <_SegmentRow>[];
-    for (final seg in segments) {
-      if (seg.id == null) continue;
-      final features = await db.getFeaturesForSegment(seg.id!);
-
-      rows.add(_SegmentRow(
-        index: seg.segmentIndex,
-        terrain: seg.terrain,
-        isValid: seg.isValid,
-        distance: seg.distance,
-        speedMean: features['Speed_Mean'] ?? 0.0,
-        ayMean: features['ay_Mean'] ?? 0.0,
-        axMean: features['ax_Mean'] ?? 0.0,
-        yrMean: features['YR_Mean'] ?? 0.0,
-        jxMean: features['Jx_Mean'] ?? 0.0,
-        jyMean: features['Jy_Mean'] ?? 0.0,
-        vvMean: features['VV_Mean'] ?? 0.0,
-      ));
+    if (rows.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
     }
+
+    // Build an ordered column list: meta columns first, then the 120 feature
+    // keys in attribute order, then any remaining columns.
+    final rowKeys = rows.first.keys.toSet();
+    final featureKeys = FeatureDisplayUtils.allFeatureKeys
+        .where(rowKeys.contains)
+        .toList();
+    final usedKeys = {..._metaFirst, ...featureKeys};
+    final remaining = rowKeys
+        .where((k) => !usedKeys.contains(k))
+        .toList()
+      ..sort();
+
+    final columns = [
+      ..._metaFirst.where(rowKeys.contains),
+      ...featureKeys,
+      ...remaining,
+    ];
 
     if (mounted) {
       setState(() {
         _allRows = rows;
+        _columns = columns;
         _loading = false;
       });
     }
   }
 
-  List<_SegmentRow> get _filteredRows {
+  List<Map<String, dynamic>> get _filteredRows {
     final filtered = _terrainFilter == 'All'
-        ? List<_SegmentRow>.from(_allRows)
-        : _allRows.where((r) => r.terrain == _terrainFilter).toList();
+        ? List<Map<String, dynamic>>.from(_allRows)
+        : _allRows
+            .where((r) => r['terrain']?.toString() == _terrainFilter)
+            .toList();
 
     filtered.sort((a, b) {
-      final cmp = _compareByColumn(a, b, _sortColumnIndex);
+      final cmp = _compareValues(a[_sortColumnKey], b[_sortColumnKey]);
       return _sortAscending ? cmp : -cmp;
     });
 
     return filtered;
   }
 
-  int _compareByColumn(_SegmentRow a, _SegmentRow b, int col) {
-    switch (col) {
-      case 0: return a.index.compareTo(b.index);
-      case 1: return a.terrain.compareTo(b.terrain);
-      case 2: return a.distance.compareTo(b.distance);
-      case 3: return a.speedMean.compareTo(b.speedMean);
-      case 4: return a.ayMean.compareTo(b.ayMean);
-      case 5: return a.axMean.compareTo(b.axMean);
-      case 6: return a.yrMean.compareTo(b.yrMean);
-      case 7: return a.jxMean.compareTo(b.jxMean);
-      case 8: return a.jyMean.compareTo(b.jyMean);
-      case 9: return a.vvMean.compareTo(b.vvMean);
-      default: return 0;
-    }
+  int _compareValues(dynamic a, dynamic b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    if (a is num && b is num) return a.compareTo(b);
+    return a.toString().compareTo(b.toString());
   }
 
-  void _onSort(int col, bool asc) {
+  void _onSort(String key, bool ascending) {
     setState(() {
-      _sortColumnIndex = col;
-      _sortAscending = asc;
+      _sortColumnKey = key;
+      _sortAscending = ascending;
     });
   }
 
@@ -237,9 +252,8 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
                 : Column(
                     children: [
                       _buildFilterBar(isDark),
-                      Expanded(
-                        child: _buildTable(isDark),
-                      ),
+                      _buildColumnNote(isDark),
+                      Expanded(child: _buildTable(isDark)),
                     ],
                   ),
       ),
@@ -256,7 +270,9 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
+              color: isDark
+                  ? AppColors.textOnDarkSecondary
+                  : AppColors.textSecondary,
             ),
           ),
           const SizedBox(width: 8),
@@ -272,7 +288,8 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
                 checkmarkColor: AppColors.primary,
                 labelStyle: TextStyle(
                   color: selected ? AppColors.primary : null,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight:
+                      selected ? FontWeight.w600 : FontWeight.normal,
                 ),
                 visualDensity: VisualDensity.compact,
               ),
@@ -283,10 +300,31 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
             '${_filteredRows.length} rows',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? AppColors.textOnDarkSecondary : AppColors.textMuted,
+              color: isDark
+                  ? AppColors.textOnDarkSecondary
+                  : AppColors.textMuted,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildColumnNote(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          'Showing all ${_columns.length} columns — scroll horizontally to see all features',
+          style: TextStyle(
+            fontSize: 11,
+            fontStyle: FontStyle.italic,
+            color: isDark
+                ? AppColors.textOnDarkSecondary
+                : AppColors.textMuted,
+          ),
+        ),
       ),
     );
   }
@@ -298,130 +336,140 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
         child: Text(
           'No segments match the selected filter.',
           style: TextStyle(
-            color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
+            color: isDark
+                ? AppColors.textOnDarkSecondary
+                : AppColors.textSecondary,
           ),
         ),
       );
     }
 
+    // Find current sort column index (for DataTable's sortColumnIndex)
+    final sortIdx = _columns.indexOf(_sortColumnKey);
+
     final dataRows = rows.map((r) => _buildDataRow(r, isDark)).toList();
     dataRows.add(_buildMeanRow(rows, isDark));
 
     return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+      scrollDirection: Axis.vertical,
       child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
         child: DataTable(
-          sortColumnIndex: _sortColumnIndex,
+          sortColumnIndex: sortIdx >= 0 ? sortIdx : null,
           sortAscending: _sortAscending,
           headingRowHeight: 44,
           dataRowMinHeight: 36,
           dataRowMaxHeight: 44,
           columnSpacing: 16,
           headingTextStyle: TextStyle(
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w700,
             color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
           ),
-          columns: [
-            _col('#', 0),
-            _col('Terrain', 1),
-            _col('Dist (m)', 2),
-            _col('Speed\n(km/h)', 3),
-            _col('ay\n(g)', 4),
-            _col('ax\n(g)', 5),
-            _col('YR\n(°/s)', 6),
-            _col('Jx\n(g/s)', 7),
-            _col('Jy\n(g/s)', 8),
-            _col('VV\n(km/h)', 9),
-          ],
+          columns: _columns.map((col) {
+            return DataColumn(
+              label: Text(
+                _displayName(col),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+              ),
+              numeric: _isNumericColumn(col),
+              onSort: (_, asc) => _onSort(col, asc),
+            );
+          }).toList(),
           rows: dataRows,
         ),
       ),
     );
   }
 
-  DataColumn _col(String label, int index) {
-    return DataColumn(
-      label: Text(label, textAlign: TextAlign.center),
-      numeric: index >= 2,
-      onSort: _onSort,
-    );
+  bool _isNumericColumn(String col) {
+    if (col == 'terrain' || col == 'nearest_landmark' ||
+        col == 'trip_id' || col == 'mode') return false;
+    return true;
   }
 
-  DataRow _buildDataRow(_SegmentRow r, bool isDark) {
-    final terrainColor = AppColors.terrainColor(r.terrain);
+  DataRow _buildDataRow(Map<String, dynamic> r, bool isDark) {
+    final terrain = r['terrain']?.toString() ?? '';
+    final terrainColor = AppColors.terrainColor(terrain);
+    final isValid = (r['is_valid'] as int? ?? 1) == 1;
+
     final textStyle = TextStyle(
-      fontSize: 12,
-      color: r.isValid
+      fontSize: 11,
+      color: isValid
           ? (isDark ? AppColors.textOnDark : AppColors.textPrimary)
           : AppColors.textMuted,
     );
 
     return DataRow(
       color: WidgetStateProperty.all(
-        r.isValid
+        isValid
             ? Colors.transparent
-            : (isDark ? Colors.white10 : Colors.black.withOpacity(0.03)),
+            : (isDark
+                ? Colors.white10
+                : Colors.black.withOpacity(0.03)),
       ),
-      cells: [
-        DataCell(Text('${r.index + 1}', style: textStyle)),
-        DataCell(
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: terrainColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              r.terrain,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: terrainColor,
+      cells: _columns.map((col) {
+        if (col == 'terrain') {
+          return DataCell(
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: terrainColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                terrain,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: terrainColor,
+                ),
               ),
             ),
-          ),
-        ),
-        DataCell(Text(r.distance.toStringAsFixed(1), style: textStyle)),
-        DataCell(Text(r.speedMean.toStringAsFixed(2), style: textStyle)),
-        DataCell(Text(r.ayMean.toStringAsFixed(3), style: textStyle)),
-        DataCell(Text(r.axMean.toStringAsFixed(3), style: textStyle)),
-        DataCell(Text(r.yrMean.toStringAsFixed(3), style: textStyle)),
-        DataCell(Text(r.jxMean.toStringAsFixed(3), style: textStyle)),
-        DataCell(Text(r.jyMean.toStringAsFixed(3), style: textStyle)),
-        DataCell(Text(r.vvMean.toStringAsFixed(3), style: textStyle)),
-      ],
+          );
+        }
+
+        final v = r[col];
+        String display;
+        if (v == null) {
+          display = '';
+        } else if (v is double) {
+          display = v.toStringAsFixed(3);
+        } else {
+          display = v.toString();
+        }
+        return DataCell(Text(display, style: textStyle));
+      }).toList(),
     );
   }
 
-  DataRow _buildMeanRow(List<_SegmentRow> rows, bool isDark) {
-    double mean(double Function(_SegmentRow) f) {
-      if (rows.isEmpty) return 0.0;
-      return rows.map(f).reduce((a, b) => a + b) / rows.length;
-    }
-
+  DataRow _buildMeanRow(List<Map<String, dynamic>> rows, bool isDark) {
     final labelStyle = TextStyle(
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: FontWeight.w700,
       color: AppColors.primary,
     );
 
     return DataRow(
-      color: WidgetStateProperty.all(
-        AppColors.primary.withOpacity(0.07),
-      ),
-      cells: [
-        DataCell(Text('AVG', style: labelStyle)),
-        DataCell(Text('—', style: labelStyle)),
-        DataCell(Text(mean((r) => r.distance).toStringAsFixed(1), style: labelStyle)),
-        DataCell(Text(mean((r) => r.speedMean).toStringAsFixed(2), style: labelStyle)),
-        DataCell(Text(mean((r) => r.ayMean).toStringAsFixed(3), style: labelStyle)),
-        DataCell(Text(mean((r) => r.axMean).toStringAsFixed(3), style: labelStyle)),
-        DataCell(Text(mean((r) => r.yrMean).toStringAsFixed(3), style: labelStyle)),
-        DataCell(Text(mean((r) => r.jxMean).toStringAsFixed(3), style: labelStyle)),
-        DataCell(Text(mean((r) => r.jyMean).toStringAsFixed(3), style: labelStyle)),
-        DataCell(Text(mean((r) => r.vvMean).toStringAsFixed(3), style: labelStyle)),
-      ],
+      color: WidgetStateProperty.all(AppColors.primary.withOpacity(0.07)),
+      cells: _columns.map((col) {
+        if (col == 'segment_index') {
+          return DataCell(Text('AVG', style: labelStyle));
+        }
+        if (col == 'terrain' || col == 'nearest_landmark' ||
+            col == 'trip_id' || col == 'mode' || col == 'is_valid') {
+          return DataCell(Text('—', style: labelStyle));
+        }
+        // Compute mean for numeric columns
+        final nums = rows.map((r) => r[col]).whereType<num>().toList();
+        if (nums.isEmpty) {
+          return DataCell(Text('—', style: labelStyle));
+        }
+        final mean = nums.fold(0.0, (a, b) => a + b.toDouble()) / nums.length;
+        return DataCell(Text(mean.toStringAsFixed(3), style: labelStyle));
+      }).toList(),
     );
   }
 }

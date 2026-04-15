@@ -39,7 +39,7 @@ class ClusterDefinition {
   factory ClusterDefinition.fromMap(Map<String, dynamic> map) {
     return ClusterDefinition(
       id: map['id'] as int?,
-      name: (map['name'] as String?) ?? '',
+      name: ((map['name'] as String?) ?? '').trim(),
       description: (map['description'] as String?) ?? '',
       route: (map['route'] as String?) ?? '',
       vehicleType: (map['vehicle_type'] as String?) ?? 'Bus',

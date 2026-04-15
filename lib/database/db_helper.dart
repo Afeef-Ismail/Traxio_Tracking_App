@@ -1075,11 +1075,11 @@ class DbHelper {
   Future<Map<String, int>> getClusterMatchCounts(String tripId) async {
     final db = await database;
     final rows = await db.rawQuery('''
-      SELECT ss.matched_cluster_name, COUNT(*) AS cnt
+      SELECT TRIM(ss.matched_cluster_name) AS matched_cluster_name, COUNT(*) AS cnt
       FROM segment_scores ss
       INNER JOIN segments s ON ss.segment_id = s.id
-      WHERE s.trip_id = ? AND s.is_valid = 1 AND ss.matched_cluster_name != ''
-      GROUP BY ss.matched_cluster_name
+      WHERE s.trip_id = ? AND s.is_valid = 1 AND TRIM(ss.matched_cluster_name) != ''
+      GROUP BY TRIM(ss.matched_cluster_name)
     ''', [tripId]);
     return {for (final r in rows) r['matched_cluster_name'] as String: r['cnt'] as int};
   }

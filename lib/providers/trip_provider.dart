@@ -489,6 +489,8 @@ class TripProvider extends ChangeNotifier {
   }
 
   /// Get all segment details for a trip (for segment list / drill-down).
+  /// Loads per-segment features from DB (120 per segment — use only when
+  /// features are actually needed, e.g. SegmentDetailScreen).
   Future<List<SegmentDetail>> getSegmentDetailsForTrip(String tripId) async {
     final segments = await _db.getSegmentsForTrip(tripId);
     final scores = await _db.getScoresForTrip(tripId);
@@ -513,6 +515,35 @@ class TripProvider extends ChangeNotifier {
         cluster0Deviation: score?.cluster0Deviation ?? 0.0,
         cluster1Deviation: score?.cluster1Deviation ?? 0.0,
         matchedCluster: score?.matchedCluster ?? -1,
+        nearestLandmark: seg.nearestLandmark,
+      ));
+    }
+    return details;
+  }
+
+  /// Lightweight version — loads segments + scores WITHOUT per-segment feature
+  /// queries. Use this for coaching and analysis that only needs deviation data.
+  /// Avoids the N×120 feature queries of [getSegmentDetailsForTrip].
+  Future<List<SegmentDetail>> getSegmentDetailsLite(String tripId) async {
+    final segments = await _db.getSegmentsForTrip(tripId);
+    final scores = await _db.getScoresForTrip(tripId);
+
+    final scoreMap = <int, SegmentScore>{};
+    for (final s in scores) {
+      scoreMap[s.segmentId] = s;
+    }
+
+    final List<SegmentDetail> details = [];
+    for (final seg in segments) {
+      if (!seg.isValid || seg.id == null) continue;
+      final sc = scoreMap[seg.id!];
+      details.add(SegmentDetail(
+        segmentIndex: seg.segmentIndex,
+        terrain: seg.terrain,
+        features: const {},
+        cluster0Deviation: sc?.cluster0Deviation ?? 0.0,
+        cluster1Deviation: sc?.cluster1Deviation ?? 0.0,
+        matchedCluster: sc?.matchedCluster ?? -1,
         nearestLandmark: seg.nearestLandmark,
       ));
     }

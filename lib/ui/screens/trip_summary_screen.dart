@@ -51,52 +51,58 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     // Capture l10n synchronously before any await.
     final l10n = AppLocalizations.of(context);
     final summary = provider.lastSummary;
-    if (summary == null) return;
 
-    try {
-      // Load all clusters (active + inactive) to correctly display historical
-      // trips. A cluster deactivated after the trip was recorded still appears
-      // with its score, but is labelled "(inactive)" in grey.
-      final allClusters = await DbHelper().getAllClusters();
-      if (!mounted) return;
+    List<ClusterDefinition> scoredClusters = [];
+    Set<String> inactiveNames = {};
+    Map<String, int> matchCounts = {};
+    int totalMatchedSegments = 0;
+    int tripScore = -1;
+    List<CoachingInsight> insights = [];
 
-      final activeNames = {for (final c in allClusters) if (c.isActive) c.name};
-      final matchCounts = await DbHelper().getClusterMatchCounts(summary.tripId);
-      if (!mounted) return;
+    if (summary != null) {
+      try {
+        // Load all clusters (active + inactive) to correctly display historical
+        // trips. A cluster deactivated after the trip was recorded still appears
+        // with its score, but is labelled "(inactive)" in grey.
+        final allClusters = await DbHelper().getAllClusters();
+        final activeNames = {for (final c in allClusters) if (c.isActive) c.name};
+        matchCounts = await DbHelper().getClusterMatchCounts(summary.tripId);
 
-      final totalMatched = matchCounts.values.fold(0, (a, b) => a + b);
+        final totalMatched = matchCounts.values.fold(0, (a, b) => a + b);
+        totalMatchedSegments = totalMatched > 0 ? totalMatched : summary.validSegments;
 
-      // Only show clusters that were actually scored for this trip.
-      final scored = allClusters
-          .where((c) => matchCounts.containsKey(c.name))
-          .toList();
-      final inactiveNames = scored
-          .where((c) => !activeNames.contains(c.name))
-          .map((c) => c.name)
-          .toSet();
+        // Only show clusters that were actually scored for this trip.
+        scoredClusters = allClusters
+            .where((c) => matchCounts.containsKey(c.name))
+            .toList();
+        inactiveNames = scoredClusters
+            .where((c) => !activeNames.contains(c.name))
+            .map((c) => c.name)
+            .toSet();
 
-      setState(() {
-        _scoredClusters = scored;
-        _inactiveClusterNames = inactiveNames;
-        _clusterMatchCounts = matchCounts;
-        _totalMatchedSegments = totalMatched > 0 ? totalMatched : summary.validSegments;
-      });
+        // Compute score
+        tripScore = ScoreCalculator.computeScore(summary.overallAvgDeviation);
 
-      // Compute score
-      _tripScore = ScoreCalculator.computeScore(summary.overallAvgDeviation);
-
-      final segments = await provider.getSegmentDetailsForTrip(summary.tripId);
-      if (!mounted) return;
-
-      final insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
-
-      setState(() {
-        _insights = insights;
-        _coachingLoaded = true;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _coachingLoaded = true);
+        // Use lite loader — coaching only needs deviation scores, not raw features.
+        // getSegmentDetailsForTrip does N×120 feature queries; skip those here.
+        final segments = await provider.getSegmentDetailsLite(summary.tripId);
+        insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
+      } catch (_) {
+        // errors leave lists empty → screen shows graceful empty state
+      }
     }
+
+    // Single setState — always reached, always stops the spinner.
+    if (!mounted) return;
+    setState(() {
+      _scoredClusters = scoredClusters;
+      _inactiveClusterNames = inactiveNames;
+      _clusterMatchCounts = matchCounts;
+      _totalMatchedSegments = totalMatchedSegments;
+      _tripScore = tripScore;
+      _insights = insights;
+      _coachingLoaded = true;
+    });
   }
 
   @override

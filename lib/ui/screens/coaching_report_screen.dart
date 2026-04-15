@@ -71,38 +71,41 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
     // may be detached and AppLocalizations.of(context) can return null.
     final l10n = AppLocalizations.of(context);
 
+    TripSummary? summary;
+    List<SegmentDetail> segments = [];
+    int tripScore = -1;
+    List<CoachingInsight> insights = [];
+
     try {
       // 1. Load trip summary from DB
-      final summary = await provider.loadTripSummary(widget.tripId);
-      if (!mounted) return;
+      summary = await provider.loadTripSummary(widget.tripId);
 
-      if (summary == null) {
-        setState(() => _loading = false);
-        return;
+      if (summary != null) {
+        // 2. Compute score
+        tripScore = summary.score >= 0
+            ? summary.score.round()
+            : ScoreCalculator.computeScore(summary.overallAvgDeviation);
+
+        // 3. Load segment details from DB (lite: skips per-segment feature queries)
+        segments = await provider.getSegmentDetailsLite(widget.tripId);
+
+        // 4. Generate rule-based coaching insights (synchronous)
+        insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
       }
-
-      // 2. Compute score
-      final score = summary.score >= 0
-          ? summary.score.round()
-          : ScoreCalculator.computeScore(summary.overallAvgDeviation);
-
-      // 3. Load segment details from DB
-      final segments = await provider.getSegmentDetailsForTrip(widget.tripId);
-      if (!mounted) return;
-
-      // 4. Generate rule-based coaching insights (synchronous)
-      final insights = CoachingEngine.analyze(summary, segments, l10n: l10n);
-
-      setState(() {
-        _summary = summary;
-        _tripScore = score;
-        _segments = segments;
-        _insights = insights;
-        _loading = false;
-      });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      // errors result in null summary → screen shows not-found state
     }
+
+    // Single setState — always reached regardless of which path was taken,
+    // so _loading is always reset and the spinner always stops.
+    if (!mounted) return;
+    setState(() {
+      _summary = summary;
+      _tripScore = tripScore;
+      _segments = segments;
+      _insights = insights;
+      _loading = false;
+    });
   }
 
   @override

@@ -12,6 +12,7 @@ import 'ui/theme/app_theme.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/login_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
+import 'ui/screens/agreement_screen.dart';
 import 'ui/screens/consent_notice_screen.dart';
 import 'ui/screens/signup_screen.dart';
 import 'ui/screens/home_screen.dart';
@@ -30,6 +31,8 @@ Future<void> main() async {
 
   final languageProvider = LanguageProvider();
   await languageProvider.loadSavedLanguage();
+  final prefs = await SharedPreferences.getInstance();
+  final agreementAccepted = prefs.getBool('data_agreement_accepted') ?? false;
 
   // Lock to portrait orientation (phone is mounted on dashboard)
   SystemChrome.setPreferredOrientations([
@@ -39,13 +42,21 @@ Future<void> main() async {
   // Keep screen on during trips
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  runApp(KsrtcApp(languageProvider: languageProvider));
+  runApp(KsrtcApp(
+    languageProvider: languageProvider,
+    agreementAccepted: agreementAccepted,
+  ));
 }
 
 class KsrtcApp extends StatefulWidget {
   final LanguageProvider languageProvider;
+  final bool agreementAccepted;
 
-  const KsrtcApp({super.key, required this.languageProvider});
+  const KsrtcApp({
+    super.key,
+    required this.languageProvider,
+    required this.agreementAccepted,
+  });
 
   @override
   State<KsrtcApp> createState() => _KsrtcAppState();
@@ -108,9 +119,10 @@ class _KsrtcAppState extends State<KsrtcApp> {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            initialRoute: '/',
+            initialRoute: widget.agreementAccepted ? '/' : '/agreement',
             routes: {
               '/': (_) => const SplashScreen(),
+              '/agreement': (_) => const AgreementScreen(),
               '/onboarding': (_) => const OnboardingScreen(),
               '/login': (_) => const LoginScreen(),
               '/consent': (_) => const ConsentNoticeScreen(),

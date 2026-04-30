@@ -14,6 +14,7 @@ import '../widgets/big_speed_display.dart';
 import '../widgets/buttons.dart';
 import '../widgets/map_widget.dart';
 import '../widgets/terrain_badge.dart';
+import 'cluster_management_screen.dart' show vehicleTypeIcon;
 
 class DataCollectionScreen extends StatefulWidget {
   const DataCollectionScreen({super.key});
@@ -31,6 +32,19 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   bool _starting = false;
   String? _exportingTripId;
   List<DataCollectionTrip> _recentTrips = [];
+  bool _requestedInitialFix = false;
+  double? _initialCenterLat;
+  double? _initialCenterLon;
+  String _selectedVehicleType = '';
+
+  final List<String> _vehicleTypes = const [
+    'Bus',
+    'Minibus',
+    'Car',
+    'Auto',
+    'Bike',
+    'Other',
+  ];
 
   @override
   void initState() {
@@ -42,16 +56,23 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     final auth = context.read<AuthProvider>();
     final tripProvider = context.read<TripProvider>();
     final userId = auth.currentUser?['id'] as int? ?? 0;
+    final username = auth.currentUser?['username'] as String? ?? '';
 
     final configured = await _db.getConfig('collection_segment_distance_m');
     final parsed = double.tryParse(configured ?? '100.0') ?? 100.0;
 
     final trips = await tripProvider.getDataCollectionTripsForUser(userId);
+    String vehicleType = '';
+    if (username.isNotEmpty) {
+      final user = await _db.getUserByUsername(username);
+      vehicleType = user?['vehicle_type'] as String? ?? '';
+    }
     if (!mounted) return;
 
     setState(() {
       _segmentDistanceM = _normalizeDistance(parsed);
       _recentTrips = trips.take(5).toList();
+      _selectedVehicleType = vehicleType;
       _loading = false;
     });
   }
@@ -81,9 +102,40 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     if (!serviceEnabled || !mounted) return;
 
     setState(() => _starting = true);
-    await context.read<TripProvider>().startCollectionTrip(_segmentDistanceM);
+    await context.read<TripProvider>().startCollectionTrip(
+      _segmentDistanceM,
+      vehicleType: _selectedVehicleType,
+    );
     if (!mounted) return;
     setState(() => _starting = false);
+  }
+
+  Future<void> _requestInitialMapFix() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 5),
+      );
+      if (!mounted) return;
+      setState(() {
+        _initialCenterLat = pos.latitude;
+        _initialCenterLon = pos.longitude;
+      });
+      return;
+    } catch (_) {
+      // Fall back to last known fix.
+    }
+
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (!mounted || last == null) return;
+      setState(() {
+        _initialCenterLat = last.latitude;
+        _initialCenterLon = last.longitude;
+      });
+    } catch (_) {
+      // Ignore if no cached fix available.
+    }
   }
 
   Future<bool> _ensureLocationServiceEnabledForCollectionStart() async {
@@ -242,6 +294,16 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
     final recording = provider.isCollectionMode && provider.state == TripState.recording;
 
+    if (recording && !_requestedInitialFix) {
+      _requestedInitialFix = true;
+      _requestInitialMapFix();
+    }
+    if (!recording && _requestedInitialFix) {
+      _requestedInitialFix = false;
+      _initialCenterLat = null;
+      _initialCenterLon = null;
+    }
+
     return recording
           ? _buildRecordingState(provider, isDark, l10n)
           : _buildIdleState(isDark, l10n);
@@ -282,6 +344,55 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                l10n.vehicleType,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _vehicleTypes.map((type) {
+                  final selected = _selectedVehicleType == type;
+                  return ChoiceChip(
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          vehicleTypeIcon(type),
+                          size: 16,
+                          color: selected
+                              ? Colors.white
+                              : (isDark
+                                  ? AppColors.textOnDarkSecondary
+                                  : AppColors.textSecondary),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(type),
+                      ],
+                    ),
+                    selected: selected,
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedVehicleType = selected ? '' : type;
+                      });
+                    },
+                    selectedColor: AppColors.primary,
+                    labelStyle: TextStyle(
+                      color: selected
+                          ? Colors.white
+                          : (isDark
+                              ? AppColors.textOnDark
+                              : AppColors.textPrimary),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
               Text(
                 l10n.segmentDistance,
                 style: TextStyle(
@@ -395,6 +506,17 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                       color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
                     ),
                   ),
+                  if (trip.vehicleType.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '${l10n.vehicleType}: ${trip.vehicleType}',
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.textOnDarkSecondary
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Text(
                     route,
@@ -472,6 +594,11 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                 longitude: provider.currentLon,
                 trail: provider.gpsTrail,
                 segmentMarkers: provider.segmentMarkers,
+                initialLatitude: _initialCenterLat,
+                initialLongitude: _initialCenterLon,
+                isRecording: provider.state == TripState.recording,
+                bearing: provider.currentBearing,
+                speedKmh: provider.currentSpeed * 3.6,
                 zoom: 16.0,
               ),
             ),

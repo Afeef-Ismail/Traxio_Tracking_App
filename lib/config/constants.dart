@@ -72,7 +72,7 @@ class AppConstants {
 
   // ─── Database ──────────────────────────────────────────────────────
   static const String dbName = 'ksrtc_benchmarking.db';
-  static const int dbVersion = 9;
+  static const int dbVersion = 10;
 
   // ─── AI Coaching ───────────────────────────────────────────────────
   static const double maxExpectedDeviation = 50.0;

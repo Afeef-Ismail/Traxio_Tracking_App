@@ -113,6 +113,21 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            if (provider.gpsSignalLost)
+              Container(
+                width: double.infinity,
+                color: AppColors.alert,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: const Text(
+                  'GPS signal weak — move to open area',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             if (showCalibrationReminder)
               Container(
                 width: double.infinity,
@@ -168,6 +183,9 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                     longitude: provider.currentLon,
                     trail: provider.gpsTrail,
                     segmentMarkers: provider.segmentMarkers,
+                    isRecording: provider.state == TripState.recording,
+                    bearing: provider.currentBearing,
+                    speedKmh: provider.currentSpeed * 3.6,
                     zoom: 16.0,
                   ),
 

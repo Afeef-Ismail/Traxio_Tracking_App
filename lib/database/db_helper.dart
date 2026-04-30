@@ -224,6 +224,10 @@ class DbHelper {
       await db.execute(
           "ALTER TABLE users ADD COLUMN vehicle_number TEXT NOT NULL DEFAULT ''");
     }
+    if (oldVersion < 10) {
+      await db.execute(
+          "ALTER TABLE data_collection_trips ADD COLUMN vehicle_type TEXT NOT NULL DEFAULT ''");
+    }
   }
 
   /// Create the users table.
@@ -417,6 +421,7 @@ class DbHelper {
         trip_id TEXT NOT NULL UNIQUE,
         driver_id INTEGER NOT NULL,
         mode TEXT NOT NULL DEFAULT 'collection',
+        vehicle_type TEXT NOT NULL DEFAULT '',
         segment_distance_m REAL NOT NULL DEFAULT 100.0,
         start_time INTEGER NOT NULL,
         end_time INTEGER,
@@ -829,6 +834,7 @@ class DbHelper {
     String tripId,
     int driverId,
     double segmentDistanceM,
+    {String vehicleType = ''}
   ) async {
     final db = await database;
     await db.insert(
@@ -837,6 +843,7 @@ class DbHelper {
         'trip_id': tripId,
         'driver_id': driverId,
         'mode': 'collection',
+        'vehicle_type': vehicleType,
         'segment_distance_m': segmentDistanceM,
         'start_time': DateTime.now().millisecondsSinceEpoch,
         'end_time': null,

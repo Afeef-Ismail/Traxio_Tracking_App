@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../config/constants.dart';
 import '../services/sensor_service.dart';
 import '../services/demo_sensor_service.dart';
@@ -94,6 +97,12 @@ class TripProvider extends ChangeNotifier {
   // ─── Live GPS position ─────────────────────────────────────────────
   double? _currentLat;
   double? _currentLon;
+  double _currentBearing = 0.0;
+  bool _gpsSignalLost = false;
+  DateTime? _lastSampleTimestamp;
+  Timer? _gpsWatchdogTimer;
+  double? _previousLat;
+  double? _previousLon;
 
   // ─── GPS trail for map polyline ────────────────────────────────────
   final List<LatLng> _gpsTrail = [];
@@ -133,6 +142,8 @@ class TripProvider extends ChangeNotifier {
   List<LatLng> get gpsTrail => List.unmodifiable(_gpsTrail);
   List<MapSegmentMarker> get segmentMarkers =>
       List.unmodifiable(_segmentMarkers);
+  double get currentBearing => _currentBearing;
+  bool get gpsSignalLost => _gpsSignalLost;
 
   /// Start a new trip recording.
   Future<void> startTrip({String vehicleType = ''}) async {
@@ -150,9 +161,29 @@ class TripProvider extends ChangeNotifier {
       _lastSummary = null;
       _currentLat = null;
       _currentLon = null;
+      _currentBearing = 0.0;
+      _gpsSignalLost = false;
+      _lastSampleTimestamp = null;
+      _previousLat = null;
+      _previousLon = null;
       _gpsTrail.clear();
       _segmentMarkers.clear();
       _rawBuffer.clear();
+
+      _gpsWatchdogTimer?.cancel();
+
+      // Seed with last known location so map has an immediate reference point.
+      try {
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          _currentLat = lastKnown.latitude;
+          _currentLon = lastKnown.longitude;
+          _previousLat = lastKnown.latitude;
+          _previousLon = lastKnown.longitude;
+        }
+      } catch (_) {
+        // Ignore location seed errors; live stream will provide updates.
+      }
 
       // Load slope threshold from settings
       try {
@@ -176,11 +207,14 @@ class TripProvider extends ChangeNotifier {
       }
 
       if (!success) {
+        await WakelockPlus.disable();
         _state = TripState.error;
         _errorMessage = 'Failed to start sensors. Check permissions.';
         notifyListeners();
         return;
       }
+
+      await WakelockPlus.enable();
 
       // Initialize segmentation
       _tripProcessor.init(
@@ -210,14 +244,17 @@ class TripProvider extends ChangeNotifier {
       if (AppConstants.demoMode) {
         // Demo: skip calibration wait, go straight to recording
         _state = TripState.recording;
+        _startGpsWatchdog();
         notifyListeners();
       } else {
         // Real: wait for calibration
         await Future.delayed(const Duration(seconds: 3));
         _state = TripState.recording;
+        _startGpsWatchdog();
         notifyListeners();
       }
     } catch (e) {
+      await WakelockPlus.disable();
       _state = TripState.error;
       _errorMessage = 'Error starting trip: $e';
       notifyListeners();
@@ -225,10 +262,11 @@ class TripProvider extends ChangeNotifier {
   }
 
   /// Start a new data collection trip recording (no scoring/AI coaching).
-  Future<void> startCollectionTrip(double segmentDistanceM) async {
+  Future<void> startCollectionTrip(double segmentDistanceM, {String vehicleType = ''}) async {
     try {
       _tripId = const Uuid().v4();
       _isCollectionMode = true;
+      _selectedVehicleType = vehicleType;
       _collectionSegmentDistanceM = segmentDistanceM;
       _segmentsCompleted = 0;
       _currentDistance = 0.0;
@@ -239,9 +277,29 @@ class TripProvider extends ChangeNotifier {
       _lastSummary = null;
       _currentLat = null;
       _currentLon = null;
+      _currentBearing = 0.0;
+      _gpsSignalLost = false;
+      _lastSampleTimestamp = null;
+      _previousLat = null;
+      _previousLon = null;
       _gpsTrail.clear();
       _segmentMarkers.clear();
       _rawBuffer.clear();
+
+      _gpsWatchdogTimer?.cancel();
+
+      // Seed with last known location so map has an immediate reference point.
+      try {
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          _currentLat = lastKnown.latitude;
+          _currentLon = lastKnown.longitude;
+          _previousLat = lastKnown.latitude;
+          _previousLon = lastKnown.longitude;
+        }
+      } catch (_) {
+        // Ignore location seed errors; live stream will provide updates.
+      }
 
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -251,7 +309,12 @@ class TripProvider extends ChangeNotifier {
         _tripProcessor.slopeThreshold = 0.02;
       }
 
-      await _db.insertDataCollectionTrip(_tripId, _currentUserId, segmentDistanceM);
+      await _db.insertDataCollectionTrip(
+        _tripId,
+        _currentUserId,
+        segmentDistanceM,
+        vehicleType: vehicleType,
+      );
 
       _state = TripState.calibrating;
       notifyListeners();
@@ -264,11 +327,14 @@ class TripProvider extends ChangeNotifier {
       }
 
       if (!success) {
+        await WakelockPlus.disable();
         _state = TripState.error;
         _errorMessage = 'Failed to start sensors. Check permissions.';
         notifyListeners();
         return;
       }
+
+      await WakelockPlus.enable();
 
       _tripProcessor.init(
         _tripId,
@@ -289,13 +355,16 @@ class TripProvider extends ChangeNotifier {
 
       if (AppConstants.demoMode) {
         _state = TripState.recording;
+        _startGpsWatchdog();
         notifyListeners();
       } else {
         await Future.delayed(const Duration(seconds: 3));
         _state = TripState.recording;
+        _startGpsWatchdog();
         notifyListeners();
       }
     } catch (e) {
+      await WakelockPlus.disable();
       _state = TripState.error;
       _errorMessage = 'Error starting data collection: $e';
       notifyListeners();
@@ -318,6 +387,9 @@ class TripProvider extends ChangeNotifier {
       }
       _sampleSub?.cancel();
       _segmentSub?.cancel();
+      _gpsWatchdogTimer?.cancel();
+      _gpsSignalLost = false;
+      await WakelockPlus.disable();
 
       // Flush remaining raw samples
       if (_rawBuffer.isNotEmpty) {
@@ -341,6 +413,7 @@ class TripProvider extends ChangeNotifier {
       _state = TripState.completed;
       notifyListeners();
     } catch (e) {
+      await WakelockPlus.disable();
       _state = TripState.error;
       _errorMessage = 'Error stopping trip: $e';
       notifyListeners();
@@ -362,6 +435,9 @@ class TripProvider extends ChangeNotifier {
       }
       _sampleSub?.cancel();
       _segmentSub?.cancel();
+      _gpsWatchdogTimer?.cancel();
+      _gpsSignalLost = false;
+      await WakelockPlus.disable();
 
       if (_rawBuffer.isNotEmpty) {
         await _db.insertRawBatch(_rawBuffer);
@@ -381,6 +457,7 @@ class TripProvider extends ChangeNotifier {
       _isCollectionMode = false;
       notifyListeners();
     } catch (e) {
+      await WakelockPlus.disable();
       _state = TripState.error;
       _errorMessage = 'Error stopping data collection: $e';
       notifyListeners();
@@ -389,6 +466,12 @@ class TripProvider extends ChangeNotifier {
 
   /// Handle incoming raw sample.
   void _onSample(RawSample sample) {
+    _lastSampleTimestamp = DateTime.now();
+    if (_gpsSignalLost) {
+      _gpsSignalLost = false;
+      notifyListeners();
+    }
+
     // Update live display values
     _currentSpeed = sample.speed;
     _currentDistance = _segmentationService.currentDistance;
@@ -397,6 +480,16 @@ class TripProvider extends ChangeNotifier {
 
     // Accumulate GPS trail (every sample for smooth polyline)
     if (sample.lat != 0.0 && sample.lon != 0.0) {
+      if (_previousLat != null && _previousLon != null) {
+        _currentBearing = _calculateBearing(
+          _previousLat!,
+          _previousLon!,
+          sample.lat,
+          sample.lon,
+        );
+      }
+      _previousLat = sample.lat;
+      _previousLon = sample.lon;
       _gpsTrail.add(LatLng(sample.lat, sample.lon));
     }
 
@@ -416,6 +509,34 @@ class TripProvider extends ChangeNotifier {
       _lastNotifyMs = nowMs;
       notifyListeners();
     }
+  }
+
+  void _startGpsWatchdog() {
+    _gpsWatchdogTimer?.cancel();
+    _gpsWatchdogTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (_state != TripState.recording) return;
+      final last = _lastSampleTimestamp;
+      if (last == null) return;
+      final gap = DateTime.now().difference(last);
+      final lost = gap > const Duration(seconds: 5);
+      if (lost != _gpsSignalLost) {
+        _gpsSignalLost = lost;
+        notifyListeners();
+      }
+    });
+  }
+
+  double _calculateBearing(double lat1, double lon1, double lat2, double lon2) {
+    final lat1Rad = lat1 * (pi / 180.0);
+    final lat2Rad = lat2 * (pi / 180.0);
+    final lonDiffRad = (lon2 - lon1) * (pi / 180.0);
+
+    final y = sin(lonDiffRad) * cos(lat2Rad);
+    final x = cos(lat1Rad) * sin(lat2Rad) -
+        sin(lat1Rad) * cos(lat2Rad) * cos(lonDiffRad);
+
+    final bearingDeg = atan2(y, x) * (180.0 / pi);
+    return (bearingDeg + 360.0) % 360.0;
   }
 
   /// Handle completed segment.
@@ -458,6 +579,12 @@ class TripProvider extends ChangeNotifier {
     _currentSpeed = 0.0;
     _currentLat = null;
     _currentLon = null;
+    _currentBearing = 0.0;
+    _gpsSignalLost = false;
+    _gpsWatchdogTimer?.cancel();
+    _lastSampleTimestamp = null;
+    _previousLat = null;
+    _previousLon = null;
     _gpsTrail.clear();
     _segmentMarkers.clear();
     _lastSummary = null;
@@ -558,6 +685,7 @@ class TripProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _gpsWatchdogTimer?.cancel();
     if (AppConstants.demoMode) {
       _demoSensorService?.dispose();
     } else {

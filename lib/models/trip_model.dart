@@ -159,6 +159,7 @@ class DataCollectionTrip {
   final String driverUsername;
   final String busNumber;
   final String routeDescription;
+  final String vehicleType;
 
   DataCollectionTrip({
     this.id,
@@ -174,6 +175,7 @@ class DataCollectionTrip {
     this.driverUsername = '',
     this.busNumber = '',
     this.routeDescription = '',
+    this.vehicleType = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -182,6 +184,7 @@ class DataCollectionTrip {
       'trip_id': tripId,
       'driver_id': driverId,
       'mode': mode,
+      'vehicle_type': vehicleType,
       'segment_distance_m': segmentDistanceM,
       'start_time': startTime.millisecondsSinceEpoch,
       'end_time': endTime?.millisecondsSinceEpoch,
@@ -205,6 +208,7 @@ class DataCollectionTrip {
       tripId: map['trip_id'] as String,
       driverId: map['driver_id'] as int? ?? 0,
       mode: (map['mode'] as String?) ?? 'collection',
+      vehicleType: (map['vehicle_type'] as String?) ?? '',
       segmentDistanceM: (map['segment_distance_m'] as num?)?.toDouble() ?? 100.0,
       startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
       endTime: endMs != null

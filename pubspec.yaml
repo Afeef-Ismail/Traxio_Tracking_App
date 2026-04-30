@@ -62,6 +62,7 @@ dependencies:
   # File sharing / opening
   share_plus: ^10.0.2
   open_file: ^3.3.2
+  wakelock_plus: ^1.1.5
 
   # Environment variables
   flutter_dotenv: ^5.1.0

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../widgets/map_widget.dart';
@@ -64,6 +65,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final types = await provider.getActiveVehicleTypes();
     if (mounted) {
       setState(() => _activeVehicleTypes = types);
+    }
+  }
+
+  Future<void> _maybeShowCalibrationPrompt() async {
+    if (AppConstants.demoMode || !mounted) return;
+
+    final auth = context.read<AuthProvider>();
+    if (!auth.isDriver) return;
+
+    final username = auth.username;
+    if (username.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final promptKey = 'calibration_prompted_$username';
+    final alreadyPrompted = prefs.getBool(promptKey) ?? false;
+    if (alreadyPrompted || !mounted) return;
+
+    await prefs.setBool(promptKey, true);
+    if (!mounted) return;
+
+    final shouldCalibrate = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(l10n.calibratePhone),
+          content: Text(l10n.calibrationPromptMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l10n.doItLater),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(l10n.calibrateNow),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldCalibrate == true && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const CalibrationScreen(showContinueButton: true),
+        ),
+      );
+      await _loadCalibrationStatus();
     }
   }
 
@@ -131,6 +180,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       },
     );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeShowCalibrationPrompt();
+      });
 
     if (action == 'open_settings') {
       _pendingStartTripAfterLocationSettings = true;
@@ -150,18 +202,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!serviceEnabled || !mounted) return;
 
     _pendingStartTripAfterLocationSettings = false;
-
-    // In real mode: prompt calibration if not calibrated yet
-    if (!AppConstants.demoMode && !_isCalibrated) {
-      final didCalibrate = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => const CalibrationScreen(showContinueButton: true),
-        ),
-      );
-      if (!mounted) return;
-      if (didCalibrate != true) return;
-      await _loadCalibrationStatus();
-    }
 
     // Use driver's saved vehicle type if set; otherwise prompt
     String vehicleType = '';
@@ -229,6 +269,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+        floatingActionButton: AppConstants.demoMode
+            ? null
+            : FloatingActionButton(
+                mini: true,
+                tooltip: 'Calibrate Sensors',
+                backgroundColor:
+                    _isCalibrated ? AppColors.success : AppColors.warning,
+                foregroundColor: Colors.white,
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const CalibrationScreen(),
+                    ),
+                  );
+                  await _loadCalibrationStatus();
+                },
+                child: Icon(
+                  _isCalibrated ? Icons.check_rounded : Icons.tune_rounded,
+                ),
+              ),
         body: SafeArea(
           child: Column(
             children: [
@@ -259,13 +320,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     Tab(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text(l10n.benchmark),
+                        child: Text(l10n.dataCollection),
                       ),
                     ),
                     Tab(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text(l10n.dataCollection),
+                        child: Text(l10n.benchmark),
                       ),
                     ),
                   ],
@@ -274,8 +335,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _buildBenchmarkTab(provider, isDark, l10n),
                     const DataCollectionScreen(),
+                    _buildBenchmarkTab(provider, isDark, l10n),
                   ],
                 ),
               ),
@@ -386,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 10,
                 offset: const Offset(0, -4),
               ),
@@ -410,46 +471,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               ),
               const SizedBox(height: 20),
-              // Calibration status indicator (real mode only)
-              if (!AppConstants.demoMode) ...[
-                GestureDetector(
-                  onTap: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CalibrationScreen(),
-                      ),
-                    );
-                    _loadCalibrationStatus();
-                  },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _isCalibrated
-                            ? Icons.check_circle_rounded
-                            : Icons.warning_amber_rounded,
-                        size: 16,
-                        color: _isCalibrated
-                            ? AppColors.success
-                            : AppColors.warning,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isCalibrated
-                            ? 'Calibrated'
-                            : 'Not calibrated — tap to calibrate',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: _isCalibrated
-                              ? AppColors.success
-                              : AppColors.warning,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
               PrimaryButton(
                 label: l10n.startTrip,
                 icon: Icons.play_arrow_rounded,

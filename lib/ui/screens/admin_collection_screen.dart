@@ -69,8 +69,10 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
+        const SnackBar(
+          content: Text(
+            'Could not save the file. Please check your storage space and try again.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -133,8 +135,10 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
+        const SnackBar(
+          content: Text(
+            'Could not save the file. Please check your storage space and try again.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -234,45 +238,51 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        TextButton.icon(
-                                          onPressed: () => Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => DataViewerScreen(
-                                                tripId: trip.tripId,
-                                                title: '${trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername} — ${dateText}',
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Wrap(
+                                        spacing: 4,
+                                        runSpacing: 4,
+                                        alignment: WrapAlignment.end,
+                                        crossAxisAlignment: WrapCrossAlignment.center,
+                                        children: [
+                                          TextButton.icon(
+                                            onPressed: () => Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => DataViewerScreen(
+                                                  tripId: trip.tripId,
+                                                  title: '${trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername} — ${dateText}',
+                                                ),
                                               ),
                                             ),
+                                            icon: const Icon(Icons.table_chart_rounded, size: 16),
+                                            label: const Text('View Data'),
                                           ),
-                                          icon: const Icon(Icons.table_chart_rounded, size: 16),
-                                          label: const Text('View Data'),
-                                        ),
-                                        TextButton.icon(
-                                          onPressed: _exportingTripId == trip.tripId
-                                              ? null
-                                              : () => _exportTrip(trip.tripId),
-                                          icon: _exportingTripId == trip.tripId
-                                              ? const SizedBox(
-                                                  width: 14,
-                                                  height: 14,
-                                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                                )
-                                              : const Icon(Icons.download_rounded, size: 16),
-                                          label: const Text('Export CSV'),
-                                        ),
-                                        IconButton(
-                                          icon: Icon(
-                                            Icons.delete_outline_rounded,
-                                            size: 20,
-                                            color: AppColors.alert.withOpacity(0.7),
+                                          TextButton.icon(
+                                            onPressed: _exportingTripId == trip.tripId
+                                                ? null
+                                                : () => _exportTrip(trip.tripId),
+                                            icon: _exportingTripId == trip.tripId
+                                                ? const SizedBox(
+                                                    width: 14,
+                                                    height: 14,
+                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                  )
+                                                : const Icon(Icons.download_rounded, size: 16),
+                                            label: const Text('Export CSV'),
                                           ),
-                                          onPressed: () => _confirmDelete(trip),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                        ),
-                                      ],
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.delete_outline_rounded,
+                                              size: 20,
+                                              color: AppColors.alert.withOpacity(0.7),
+                                            ),
+                                            onPressed: () => _confirmDelete(trip),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),

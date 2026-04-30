@@ -145,9 +145,10 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      final message = _friendlyExportErrorMessage(l10n, e.toString());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${l10n.exportFailed}: $e'),
+          content: Text(message),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -156,6 +157,77 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
         setState(() => _exportingTripId = null);
       }
     }
+  }
+
+  String _friendlyExportErrorMessage(AppLocalizations l10n, String rawError) {
+    final normalized = rawError.toLowerCase();
+    if (normalized.contains('permission')) {
+      return l10n.permissionDenied;
+    }
+    return l10n.exportFailed;
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds.remainder(60);
+    return '${m}m ${s}s';
+  }
+
+  String _formatDateTime(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _showCollectionHelpSheet(AppLocalizations l10n, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.dataCollectionHelpTitle,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _FaqItem(
+                  question: l10n.faqWhatRecordedQ,
+                  answer: l10n.faqWhatRecordedA,
+                  isDark: isDark,
+                ),
+                _FaqItem(
+                  question: l10n.faqInternetQ,
+                  answer: l10n.faqInternetA,
+                  isDark: isDark,
+                ),
+                _FaqItem(
+                  question: l10n.faqShareDataQ,
+                  answer: l10n.faqShareDataA,
+                  isDark: isDark,
+                ),
+                _FaqItem(
+                  question: l10n.faqStorageQ,
+                  answer: l10n.faqStorageA,
+                  isDark: isDark,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -179,6 +251,25 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              l10n.dataCollection,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+              ),
+            ),
+            IconButton(
+              tooltip: l10n.help,
+              onPressed: () => _showCollectionHelpSheet(l10n, isDark),
+              icon: const Icon(Icons.help_outline_rounded),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
             color: isDark ? AppColors.darkCard : AppColors.lightCard,
@@ -230,7 +321,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
         ),
         const SizedBox(height: 22),
         Text(
-          l10n.dataCollection,
+          l10n.recentTrips,
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w600,
@@ -257,9 +348,11 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
           )
         else
           ..._recentTrips.map((trip) {
-            final date = trip.startTime;
-            final dateText =
-                '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+          final dateText = _formatDateTime(trip.startTime);
+          final totalDistanceKm =
+            (trip.totalSegments * trip.segmentDistanceM) / 1000.0;
+          final duration = (trip.endTime ?? trip.startTime)
+            .difference(trip.startTime);
             final route = trip.routeDescription.isEmpty ? 'Route not available' : trip.routeDescription;
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
@@ -283,7 +376,21 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${trip.totalSegments} segments • ${trip.segmentDistanceM.toStringAsFixed(0)}m',
+                    '${l10n.distance}: ${totalDistanceKm.toStringAsFixed(1)} km',
+                    style: TextStyle(
+                      color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${l10n.duration}: ${_formatDuration(duration)}',
+                    style: TextStyle(
+                      color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${l10n.segments}: ${trip.totalSegments}',
                     style: TextStyle(
                       color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
                     ),
@@ -329,10 +436,20 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                tooltip: l10n.help,
+                onPressed: () => _showCollectionHelpSheet(l10n, isDark),
+                icon: const Icon(Icons.help_outline_rounded),
+              ),
+            ],
+          ),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.12),
+              color: AppColors.success.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Text(
@@ -421,6 +538,46 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                       provider.state == TripState.recording ? _stopCollection : null,
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FaqItem extends StatelessWidget {
+  final String question;
+  final String answer;
+  final bool isDark;
+
+  const _FaqItem({
+    required this.question,
+    required this.answer,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            question,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            answer,
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
             ),
           ),
         ],

@@ -4,12 +4,15 @@ import 'package:provider/provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
+import '../../services/calibration_service.dart';
+import '../../config/constants.dart';
 import '../widgets/map_widget.dart';
 import '../widgets/big_speed_display.dart';
 import '../widgets/terrain_badge.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/buttons.dart';
 import '../theme/app_colors.dart';
+import 'calibration_screen.dart';
 import 'trip_summary_screen.dart';
 
 /// Trip In Progress Screen — THE most important screen.
@@ -34,6 +37,10 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
   DateTime? _tripStartTime;
   Duration _elapsed = Duration.zero;
   bool _navigatedToSummary = false;
+  bool _isCalibrated = false;
+  bool _reminderDismissed = false;
+
+  final CalibrationService _calibrationService = CalibrationService();
 
   @override
   void initState() {
@@ -52,6 +59,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
     });
     // Mark activity at trip start
     context.read<AuthProvider>().updateActivity();
+    _loadCalibrationStatus();
   }
 
   @override
@@ -59,6 +67,15 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
     _elapsedTimer?.cancel();
     _sessionTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadCalibrationStatus() async {
+    await _calibrationService.load();
+    if (mounted) {
+      setState(() {
+        _isCalibrated = _calibrationService.isCalibrated;
+      });
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -76,6 +93,9 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
     final provider = context.watch<TripProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final distanceKm = provider.currentDistance / 1000.0;
+    final showCalibrationReminder =
+      !AppConstants.demoMode && !_isCalibrated && !_reminderDismissed;
+    final calibrationText = l10n.calibrationReminder;
 
     // Handle trip completion — navigate to summary
     if (provider.state == TripState.completed && !_navigatedToSummary) {
@@ -93,6 +113,51 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            if (showCalibrationReminder)
+              Container(
+                width: double.infinity,
+                color: AppColors.warning.withValues(alpha: 0.12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: AppColors.warning,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        calibrationText,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CalibrationScreen(showContinueButton: true),
+                          ),
+                        );
+                        await _loadCalibrationStatus();
+                      },
+                      child: Text(l10n.calibrate),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _reminderDismissed = true;
+                        });
+                      },
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+
             // ─── Map (60%+) ──────────────────────────────────────────
             Expanded(
               flex: 6,
@@ -160,7 +225,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: (isDark ? AppColors.darkCard : Colors.white)
-                            .withOpacity(0.9),
+                          .withValues(alpha: 0.9),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: isDark
@@ -193,7 +258,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 12,
                     offset: const Offset(0, -4),
                   ),
@@ -228,7 +293,7 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.1),
+                                  color: AppColors.primary.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(

@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:convert';
+import 'dart:io';
 
 /// Static NH-766 route landmarks and GPS-based nearest-landmark lookup.
 class LandmarkUtils {
@@ -25,8 +27,19 @@ class LandmarkUtils {
     _Landmark('Sulthan Bathery', 11.6634, 76.2673),
   ];
 
+  static final Map<String, String> _geocodeCache = {};
+
+  static const double _nh766LatMin = 11.2;
+  static const double _nh766LatMax = 11.7;
+  static const double _nh766LonMin = 75.7;
+  static const double _nh766LonMax = 76.3;
+
   /// Returns the nearest landmark name if within 2 km, otherwise 'NH-766'.
   static String getNearestLandmark(double lat, double lon) {
+    if (!_isWithinNh766Corridor(lat, lon)) {
+      return _formatGpsCoordinates(lat, lon);
+    }
+
     String nearest = 'NH-766';
     double minDist = double.infinity;
 
@@ -39,6 +52,103 @@ class LandmarkUtils {
     }
 
     return minDist <= 2.0 ? nearest : 'NH-766';
+  }
+
+  /// Returns a route-aware landmark label and reverse geocodes outside NH-766 when possible.
+  static Future<String> getNearestLandmarkWithGeocoding(
+    double lat,
+    double lon,
+  ) async {
+    final routeAware = getNearestLandmark(lat, lon);
+    if (routeAware != _formatGpsCoordinates(lat, lon)) {
+      return routeAware;
+    }
+
+    final cacheKey = _cacheKey(lat, lon);
+    final cached = _geocodeCache[cacheKey];
+    if (cached != null) return cached;
+
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 3);
+
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json',
+      );
+      final request = await client.getUrl(uri);
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'KSRTC Benchmarking App/6.0',
+      );
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+
+      final response = await request.close().timeout(const Duration(seconds: 3));
+      if (response.statusCode == HttpStatus.ok) {
+        final body = await response.transform(utf8.decoder).join();
+        final decoded = jsonDecode(body) as Map<String, dynamic>;
+        final address = (decoded['address'] as Map<String, dynamic>?) ?? {};
+        final label = _buildGeocodedLabel(address);
+        if (label.isNotEmpty) {
+          _geocodeCache[cacheKey] = label;
+          return label;
+        }
+      }
+    } catch (_) {
+      // Fall through to coordinate fallback.
+    }
+
+    final fallback = _formatGpsCoordinates(lat, lon);
+    _geocodeCache[cacheKey] = fallback;
+    return fallback;
+  }
+
+  static bool _isWithinNh766Corridor(double lat, double lon) {
+    return lat >= _nh766LatMin && lat <= _nh766LatMax &&
+        lon >= _nh766LonMin && lon <= _nh766LonMax;
+  }
+
+  static String _formatGpsCoordinates(double lat, double lon) {
+    final ns = lat >= 0 ? 'N' : 'S';
+    final ew = lon >= 0 ? 'E' : 'W';
+    return '${lat.abs().toStringAsFixed(4)}°$ns, ${lon.abs().toStringAsFixed(4)}°$ew';
+  }
+
+  static String _buildGeocodedLabel(Map<String, dynamic> address) {
+    final road = _firstNonEmpty([
+      address['road'],
+      address['pedestrian'],
+      address['path'],
+      address['residential'],
+      address['highway'],
+    ]);
+
+    final locality = _firstNonEmpty([
+      address['suburb'],
+      address['city'],
+      address['town'],
+      address['village'],
+      address['municipality'],
+      address['county'],
+    ]);
+
+    if (road.isEmpty && locality.isEmpty) return '';
+    if (road.isEmpty) return locality;
+    if (locality.isEmpty) return road;
+    return '$road, $locality';
+  }
+
+  static String _firstNonEmpty(List<dynamic> values) {
+    for (final value in values) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  static String _cacheKey(double lat, double lon) {
+    final latKey = lat.toStringAsFixed(4);
+    final lonKey = lon.toStringAsFixed(4);
+    return '$latKey,$lonKey';
   }
 
   /// Haversine distance in kilometres.

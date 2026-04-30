@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_colors.dart';
 
 /// Splash Screen — App entry point.
@@ -17,10 +18,14 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Navigate to login after 2 seconds
-    Timer(const Duration(seconds: 2), () {
+    // Check onboarding status and navigate accordingly
+    Timer(const Duration(seconds: 2), () async {
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/login');
+        final prefs = await SharedPreferences.getInstance();
+        final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
+        
+        final route = onboardingComplete ? '/login' : '/onboarding';
+        Navigator.of(context).pushReplacementNamed(route);
       }
     });
   }

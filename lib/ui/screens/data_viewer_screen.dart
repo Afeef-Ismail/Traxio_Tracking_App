@@ -175,8 +175,10 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
+        const SnackBar(
+          content: Text(
+            'Could not save the file. Please check your storage space and try again.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -194,8 +196,8 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not open file: $e'),
+        const SnackBar(
+          content: Text('Could not open the file. Please try exporting again.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -263,49 +265,52 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
   Widget _buildFilterBar(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Text(
-            'Terrain:',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: isDark
-                  ? AppColors.textOnDarkSecondary
-                  : AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          ..._terrainOptions.map((t) {
-            final selected = _terrainFilter == t;
-            return Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: FilterChip(
-                label: Text(t, style: const TextStyle(fontSize: 12)),
-                selected: selected,
-                onSelected: (_) => setState(() => _terrainFilter = t),
-                selectedColor: AppColors.primary.withOpacity(0.18),
-                checkmarkColor: AppColors.primary,
-                labelStyle: TextStyle(
-                  color: selected ? AppColors.primary : null,
-                  fontWeight:
-                      selected ? FontWeight.w600 : FontWeight.normal,
-                ),
-                visualDensity: VisualDensity.compact,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Text(
+              'Terrain:',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: isDark
+                    ? AppColors.textOnDarkSecondary
+                    : AppColors.textSecondary,
               ),
-            );
-          }),
-          const Spacer(),
-          Text(
-            '${_filteredRows.length} rows',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark
-                  ? AppColors.textOnDarkSecondary
-                  : AppColors.textMuted,
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            ..._terrainOptions.map((t) {
+              final selected = _terrainFilter == t;
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: Text(t, style: const TextStyle(fontSize: 12)),
+                  selected: selected,
+                  onSelected: (_) => setState(() => _terrainFilter = t),
+                  selectedColor: AppColors.primary.withOpacity(0.18),
+                  checkmarkColor: AppColors.primary,
+                  labelStyle: TextStyle(
+                    color: selected ? AppColors.primary : null,
+                    fontWeight:
+                        selected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+              );
+            }),
+            const SizedBox(width: 10),
+            Text(
+              '${_filteredRows.length} rows',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark
+                    ? AppColors.textOnDarkSecondary
+                    : AppColors.textMuted,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

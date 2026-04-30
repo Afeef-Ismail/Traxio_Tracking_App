@@ -11,6 +11,9 @@ import 'providers/trip_provider.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/login_screen.dart';
+import 'ui/screens/onboarding_screen.dart';
+import 'ui/screens/consent_notice_screen.dart';
+import 'ui/screens/signup_screen.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/admin_home_screen.dart';
 import 'ui/screens/trip_in_progress_screen.dart';
@@ -108,7 +111,10 @@ class _KsrtcAppState extends State<KsrtcApp> {
             initialRoute: '/',
             routes: {
               '/': (_) => const SplashScreen(),
+              '/onboarding': (_) => const OnboardingScreen(),
               '/login': (_) => const LoginScreen(),
+              '/consent': (_) => const ConsentNoticeScreen(),
+              '/signup': (_) => const SignupScreen(),
               '/home': (_) => const HomeScreen(),
               '/admin': (_) => const AdminGuard(child: AdminHomeScreen()),
               '/trip': (_) => const TripInProgressScreen(),

@@ -184,12 +184,12 @@ class TripProcessor {
     //   Jx, Jy     → g/s    (derivative of m/s² = m/s³ → ÷9.81)
     //   YR         → rad/s  (already correct)
     //   R          → m      (already correct: m/s ÷ rad/s)
-    const double _g = 9.80665; // standard gravity
+    const double g = 9.80665; // standard gravity
     final speedConverted = speedTrimmed.map((v) => v * 3.6).toList();
-    final axConverted = axTrimmed.map((v) => v / _g).toList();
-    final ayConverted = ayTrimmed.map((v) => v / _g).toList();
-    final jxConverted = jxArr.map((v) => v / _g).toList();
-    final jyConverted = jyArr.map((v) => v / _g).toList();
+    final axConverted = axTrimmed.map((v) => v / g).toList();
+    final ayConverted = ayTrimmed.map((v) => v / g).toList();
+    final jxConverted = jxArr.map((v) => v / g).toList();
+    final jyConverted = jyArr.map((v) => v / g).toList();
     final vvConverted = vvArr.map((v) => v * 3.6).toList();
 
     // ─── 3. Apply 3-point smoothing ────────────────────────────────
@@ -227,7 +227,7 @@ class TripProcessor {
     }
 
     // ─── 6. Save segment to database ───────────────────────────────
-    final nearestLandmark = LandmarkUtils.getNearestLandmark(
+    final nearestLandmark = await LandmarkUtils.getNearestLandmarkWithGeocoding(
       segData.endLat,
       segData.endLon,
     );

@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/language_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../theme/app_colors.dart';
+import 'consent_notice_screen.dart';
 
 /// Login Screen — Authentication gate.
 ///
@@ -344,6 +345,45 @@ class _LoginScreenState extends State<LoginScreen> {
                       _handleLogin();
                     },
                   ),
+
+                const SizedBox(height: 20),
+
+                // ─── Create Account Link ─────────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      l10n?.dontHaveAccount ?? "Don't have an account? ",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark
+                            ? AppColors.textOnDarkSecondary
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        final username = await Navigator.of(context).push<String>(
+                          MaterialPageRoute(
+                            builder: (_) => const ConsentNoticeScreen(),
+                          ),
+                        );
+
+                        if (username != null && mounted) {
+                          _usernameController.text = username;
+                        }
+                      },
+                      child: Text(
+                        l10n?.signUp ?? 'Sign Up',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
 
                 const SizedBox(height: 40),
 

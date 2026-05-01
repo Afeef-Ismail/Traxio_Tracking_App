@@ -9,8 +9,7 @@
     <!-- Internet permission for OpenStreetMap tiles -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Removed READ/WRITE external storage permissions; app uses app-scoped and public directories. -->
 
     <!-- Foreground service for continuous sensor capture -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -26,7 +25,6 @@
         android:label="Traxio"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true"
         android:enableOnBackInvokedCallback="true"
         android:networkSecurityConfig="@xml/network_security_config">
 

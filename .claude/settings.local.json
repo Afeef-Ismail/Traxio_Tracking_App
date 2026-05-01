@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell:*)",
+      "Bash(flutter build:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter pub:*)",
+      "Bash(flutter gen-l10n:*)",
+      "Bash(flutter test:*)",
+      "Bash(attrib -R /S /D \"build\\\\app\\\\intermediates\\\\assets\\\\release\")",
+      "Bash(attrib -R -S \"C:\\\\Users\\\\afeef\\\\OneDrive\\\\Desktop\\\\NITC_KSRTC_APP\\\\build\\\\app\\\\intermediates\\\\assets\\\\release\\\\*\" /S /D)",
+      "Bash(flutter clean:*)",
+      "Bash(cmd /c \"attrib -R -S -H \\\\\"C:\\\\Users\\\\afeef\\\\OneDrive\\\\Desktop\\\\NITC_KSRTC_APP\\\\build\\\\app\\\\intermediates\\\\assets\\\\release\\\\\" /s /d 2>nul\")",
+      "Bash(cmd /c \"rmdir /S /Q \\\\\"C:\\\\Users\\\\afeef\\\\OneDrive\\\\Desktop\\\\NITC_KSRTC_APP\\\\build\\\\app\\\\intermediates\\\\assets\\\\\"\")",
+      "Bash(powershell.exe:*)",
+      "Bash(grep -v \"^$\")",
+      "Bash(cmd:*)",
+      "Bash(ls -la C:/Users/afeef/OneDrive/Desktop/NITC_KSRTC_APP/ksrtc-benchmarking-v5.3-*.apk)",
+      "Bash(python3 -c ' *)",
+      "Bash(dart analyze *)",
+      "Bash(attrib -R \"build\\\\app\\\\intermediates\\\\merged_native_libs\\\\release\\\\mergeReleaseNativeLibs\\\\out\\\\lib\\\\arm64-v8a\\\\libapp.so\")",
+      "Bash(attrib -R /S /D \"build\\\\*\")"
+    ]
+  }
+}

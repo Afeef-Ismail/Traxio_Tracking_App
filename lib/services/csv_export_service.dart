@@ -3,7 +3,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+// Note: storage permission checks removed — use app-scoped and public directories instead
 import '../database/db_helper.dart';
 import '../config/constants.dart';
 
@@ -53,7 +53,15 @@ class CsvExportService {
     // Get trip to extract vehicle type and date
     final trip = await _db.getDataCollectionTripById(tripId);
     final vehicleType = trip?['vehicle_type'] as String? ?? 'Unknown';
-    final startTime = trip?['start_time'] as DateTime? ?? DateTime.now();
+    DateTime startTime;
+    final rawStart = trip?['start_time'];
+    if (rawStart is int) {
+      startTime = DateTime.fromMillisecondsSinceEpoch(rawStart);
+    } else if (rawStart is DateTime) {
+      startTime = rawStart;
+    } else {
+      startTime = DateTime.now();
+    }
     final dateStr = DateFormat('yyyyMMdd').format(startTime);
     final safeVehicleType = vehicleType.trim().isEmpty
         ? 'Unknown'
@@ -87,7 +95,15 @@ class CsvExportService {
     // Get trip to extract vehicle type and date
     final trip = await _db.getBenchmarkTripById(tripId);
     final vehicleType = trip?['vehicle_type'] as String? ?? 'Unknown';
-    final startTime = trip?['start_time'] as DateTime? ?? DateTime.now();
+    DateTime startTime;
+    final rawStart = trip?['start_time'];
+    if (rawStart is int) {
+      startTime = DateTime.fromMillisecondsSinceEpoch(rawStart);
+    } else if (rawStart is DateTime) {
+      startTime = rawStart;
+    } else {
+      startTime = DateTime.now();
+    }
     final dateStr = DateFormat('yyyyMMdd').format(startTime);
     final safeVehicleType = vehicleType.trim().isEmpty
         ? 'Unknown'
@@ -219,8 +235,6 @@ class CsvExportService {
     required DateTime exportDate,
     required String exportTitle,
   }) async {
-    await _ensureStoragePermissionIfNeeded();
-
     final buffer = StringBuffer();
     
     // Add metadata rows at the top
@@ -246,29 +260,13 @@ class CsvExportService {
       buffer.writeln(values.join(','));
     }
 
-    final directories = await _getExportDirectories();
-    for (final directory in directories) {
-      try {
-        if (!await directory.exists()) {
-          await directory.create(recursive: true);
-        }
-
-        final file = File(p.join(directory.path, fileName));
-        await file.writeAsString(buffer.toString(), flush: true);
-        if (!file.existsSync()) {
-          continue;
-        }
-        final fileLength = await file.length();
-        if (fileLength == 0) {
-          continue;
-        }
-        return file.path;
-      } catch (_) {
-        continue;
-      }
-    }
-
-    throw Exception(_storageHelpMessage);
+    final path = await _getExportPath(fileName);
+    final file = File(path);
+    await file.writeAsString(buffer.toString(), flush: true);
+    if (!file.existsSync()) throw Exception(_storageHelpMessage);
+    final fileLength = await file.length();
+    if (fileLength == 0) throw Exception(_storageHelpMessage);
+    return file.path;
   }
 
   String _sanitizeForFileName(String input) {
@@ -278,16 +276,28 @@ class CsvExportService {
     return safe.isEmpty ? 'trip' : safe;
   }
 
-  Future<void> _ensureStoragePermissionIfNeeded() async {
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      if (androidInfo.version.sdkInt < 33) {
-        final permissionStatus = await Permission.storage.request();
-        if (!permissionStatus.isGranted) {
-          throw Exception(_storageHelpMessage);
-        }
+  // Permission checks intentionally removed; use app/public directories.
+
+  Future<String> _getExportPath(String filename) async {
+    final List<Future<Directory?>> candidates = [
+      Future.value(Directory('/storage/emulated/0/Download')),
+      getExternalStorageDirectory().then((d) => d != null ? Directory('${d.path}/Traxio') : null),
+      getApplicationDocumentsDirectory().then((d) => Directory('${d.path}/Traxio')),
+      getTemporaryDirectory().then((d) => Directory('${d.path}/Traxio')),
+    ];
+
+    for (final candidate in candidates) {
+      try {
+        final dir = await candidate;
+        if (dir == null) continue;
+        if (!await dir.exists()) await dir.create(recursive: true);
+        final file = File('${dir.path}/$filename');
+        return file.path;
+      } catch (_) {
+        continue; // try next candidate
       }
     }
+    throw Exception('No writable directory found on this device');
   }
 
   String _extractValue(String key, Map<String, dynamic> row) {
@@ -317,21 +327,14 @@ class CsvExportService {
   }
 
   Future<List<Directory>> _getExportDirectories() async {
+    // Kept for backward compatibility but not used by new flow.
     final directories = <Directory>[];
-
     final downloads = Directory('/storage/emulated/0/Download');
-    if (await downloads.exists()) {
-      directories.add(downloads);
-    }
-
+    if (await downloads.exists()) directories.add(downloads);
     final external = await getExternalStorageDirectory();
-    if (external != null) {
-      directories.add(Directory(p.join(external.path, 'Traxio')));
-    }
-
+    if (external != null) directories.add(Directory(p.join(external.path, 'Traxio')));
     final docs = await getApplicationDocumentsDirectory();
     directories.add(Directory(p.join(docs.path, 'Traxio')));
-
     return directories;
   }
 }

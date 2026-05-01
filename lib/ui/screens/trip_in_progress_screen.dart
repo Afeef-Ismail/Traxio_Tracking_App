@@ -39,6 +39,8 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
   bool _navigatedToSummary = false;
   bool _isCalibrated = false;
   bool _reminderDismissed = false;
+  int _sourceTabIndex = 2;
+  bool _routeArgsLoaded = false;
 
   final CalibrationService _calibrationService = CalibrationService();
 
@@ -67,6 +69,15 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
     _elapsedTimer?.cancel();
     _sessionTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeArgsLoaded) return;
+    final args = ModalRoute.of(context)?.settings.arguments as Map?;
+    _sourceTabIndex = args?['sourceTab'] as int? ?? args?['initialTab'] as int? ?? 2;
+    _routeArgsLoaded = true;
   }
 
   Future<void> _loadCalibrationStatus() async {
@@ -103,7 +114,9 @@ class _TripInProgressScreenState extends State<TripInProgressScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => const TripSummaryScreen(),
+            builder: (context) => TripSummaryScreen(
+              initialTabIndex: _sourceTabIndex,
+            ),
           ),
         );
       });

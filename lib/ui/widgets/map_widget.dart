@@ -128,7 +128,7 @@ class _MapWidgetState extends State<MapWidget> {
                 // ─── Tile Layer ────────────────────────────────────────────
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.nitc.ksrtc.ksrtc_app',
+                  userAgentPackageName: 'com.example.traxio',
                   maxZoom: 19,
                   errorTileCallback: (tile, error, stackTrace) {
                     _onTileError(error, stackTrace);
@@ -138,7 +138,7 @@ class _MapWidgetState extends State<MapWidget> {
                 // Fallback provider (parallel layer; may load if primary fails)
                 TileLayer(
                   urlTemplate: 'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.nitc.ksrtc.ksrtc_app',
+                  userAgentPackageName: 'com.example.traxio',
                   maxZoom: 19,
                   errorTileCallback: (tile, error, stackTrace) {
                     _onTileError(error, stackTrace);

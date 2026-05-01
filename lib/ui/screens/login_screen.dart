@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // ─── Title ───────────────────────────────────────────
                 Text(
-                  'KSRTC',
+                  'Traxio',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,
@@ -129,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  l10n?.appName ?? 'Driver Benchmarking System',
+                  l10n?.appName ?? 'Vehicle Motion Data Collection & Driver Benchmarking',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w400,
@@ -389,7 +389,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // ─── Footer ──────────────────────────────────────────
                 Text(
-                  'NIT Calicut × KSRTC Kerala',
+                  'NIT Calicut × Traxio',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark

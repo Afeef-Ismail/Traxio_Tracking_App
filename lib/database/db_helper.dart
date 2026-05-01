@@ -907,6 +907,34 @@ class DbHelper {
     return maps.map((m) => DataCollectionTrip.fromMap(m)).toList();
   }
 
+  Future<Map<String, dynamic>?> getDataCollectionTripById(String tripId) async {
+    final db = await database;
+    final maps = await db.query(
+      'data_collection_trips',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    if (maps.isEmpty) return null;
+    return maps.first;
+  }
+
+  Future<Map<String, dynamic>?> getBenchmarkTripById(String tripId) async {
+    final db = await database;
+    final maps = await db.query(
+      'trip_summaries',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    if (maps.isEmpty) return null;
+    final map = maps.first;
+    return {
+      ...map,
+      'start_time': map['start_time'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(map['start_time'] as int)
+          : map['start_time'],
+    };
+  }
+
   Future<List<Map<String, dynamic>>> getSegmentsWithFeaturesForTrip(
     String tripId, {
     String? mode,

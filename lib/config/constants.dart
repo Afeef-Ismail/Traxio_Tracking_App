@@ -1,4 +1,4 @@
-/// Application-wide constants for the KSRTC Driver Benchmarking System.
+/// Application-wide constants for the Traxio Vehicle Data Collection System.
 /// All values are research-aligned and must not be changed without validation.
 class AppConstants {
   AppConstants._();

@@ -12,7 +12,9 @@ import '../widgets/trip_score_chart.dart';
 
 /// Driver Profile — shows logged-in driver's stats and history summary.
 class DriverProfileScreen extends StatefulWidget {
-  const DriverProfileScreen({super.key});
+  final bool embedded;
+
+  const DriverProfileScreen({super.key, this.embedded = false});
 
   @override
   State<DriverProfileScreen> createState() => _DriverProfileScreenState();
@@ -90,13 +92,15 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.driverProfile),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(l10n.driverProfile),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(

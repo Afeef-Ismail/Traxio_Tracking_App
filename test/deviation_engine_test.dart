@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ksrtc_app/analytics/deviation_engine.dart';
-import 'package:ksrtc_app/config/benchmark_tables.dart';
-import 'package:ksrtc_app/config/constants.dart';
+import 'package:traxio/analytics/deviation_engine.dart';
+import 'package:traxio/config/benchmark_tables.dart';
+import 'package:traxio/config/constants.dart';
 
 void main() {
   group('DeviationEngine', () {

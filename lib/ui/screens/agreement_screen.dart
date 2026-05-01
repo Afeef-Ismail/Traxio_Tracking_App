@@ -17,12 +17,8 @@ class _AgreementScreenState extends State<AgreementScreen> {
     await prefs.setBool('data_agreement_accepted', true);
     await prefs.setString('data_agreement_date', DateTime.now().toIso8601String());
 
-    final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      onboardingComplete ? '/login' : '/onboarding',
-      (_) => false,
-    );
+    Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
   }
 
   Future<void> _decline() async {
@@ -69,7 +65,7 @@ class _AgreementScreenState extends State<AgreementScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'KSRTC Driver Benchmarking System — NIT Calicut',
+                      'Traxio — Vehicle Motion Data Collection',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
@@ -79,7 +75,7 @@ class _AgreementScreenState extends State<AgreementScreen> {
                     const SizedBox(height: 20),
                     _sectionTitle('Section 1 — Purpose of Data Collection', isDark),
                     _sectionBody(
-                      'This application collects vehicle motion and GPS data during your trips for academic research at the Centre of Excellence in Artificial Intelligence (CoE-AI), National Institute of Technology Calicut (NITC), in collaboration with the Kerala State Road Transport Corporation (KSRTC). The research aims to identify safe and fuel-efficient driving patterns on Kerala roads.',
+                      'This application collects vehicle motion and GPS data during your trips for academic research at the Centre of Excellence in Artificial Intelligence (CoE-AI), National Institute of Technology Calicut (NITC), in collaboration with the Traxio driver benchmarking project. The research aims to identify safe and fuel-efficient driving patterns on Kerala roads.',
                       isDark,
                     ),
                     _sectionTitle('Section 2 — What Data is Collected', isDark),

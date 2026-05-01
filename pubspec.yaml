@@ -1,5 +1,5 @@
-name: ksrtc_app
-description: KSRTC Master Driver Benchmarking System - Telematics-based driver behavior analysis
+name: traxio
+description: Traxio — Vehicle Motion Data Collection & Driver Benchmarking
 
 publish_to: 'none'
 

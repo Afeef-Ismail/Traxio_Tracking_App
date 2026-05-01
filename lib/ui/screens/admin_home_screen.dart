@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../providers/auth_provider.dart';
@@ -61,7 +60,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved to Downloads: ${p.basename(path)}'),
+          content: Text('CSV saved to: $path'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Share',

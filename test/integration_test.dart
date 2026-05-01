@@ -1,13 +1,13 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ksrtc_app/analytics/smoothing.dart';
-import 'package:ksrtc_app/analytics/feature_engine.dart';
-import 'package:ksrtc_app/analytics/fft_engine.dart';
-import 'package:ksrtc_app/analytics/deviation_engine.dart';
-import 'package:ksrtc_app/services/terrain_service.dart';
-import 'package:ksrtc_app/config/constants.dart';
-import 'package:ksrtc_app/config/benchmark_tables.dart';
-import 'package:ksrtc_app/utils/math_utils.dart';
+import 'package:traxio/analytics/smoothing.dart';
+import 'package:traxio/analytics/feature_engine.dart';
+import 'package:traxio/analytics/fft_engine.dart';
+import 'package:traxio/analytics/deviation_engine.dart';
+import 'package:traxio/services/terrain_service.dart';
+import 'package:traxio/config/constants.dart';
+import 'package:traxio/config/benchmark_tables.dart';
+import 'package:traxio/utils/math_utils.dart';
 
 /// Integration test simulating the full processing pipeline
 /// for a synthetic segment of data.

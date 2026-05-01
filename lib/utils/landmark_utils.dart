@@ -78,7 +78,7 @@ class LandmarkUtils {
       final request = await client.getUrl(uri);
       request.headers.set(
         HttpHeaders.userAgentHeader,
-        'KSRTC Benchmarking App/6.0',
+        'Traxio/6.0',
       );
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
 

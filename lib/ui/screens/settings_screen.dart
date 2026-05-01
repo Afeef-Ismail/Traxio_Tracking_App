@@ -19,8 +19,9 @@ import 'calibration_screen.dart';
 class SettingsScreen extends StatefulWidget {
   /// Callback to toggle dark mode in the app root.
   final ValueChanged<bool>? onDarkModeChanged;
+  final bool embedded;
 
-  const SettingsScreen({super.key, this.onDarkModeChanged});
+  const SettingsScreen({super.key, this.onDarkModeChanged, this.embedded = false});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -70,13 +71,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.settings),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(l10n.settings),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -356,7 +359,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 children: [
                   Text(
-                    'KSRTC Benchmarking v1.0.0',
+                    'Traxio v1.0.0',
                     style: TextStyle(
                       fontSize: 13,
                       color: isDark

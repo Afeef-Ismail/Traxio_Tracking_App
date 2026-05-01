@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ksrtc_app/providers/auth_provider.dart';
+import 'package:traxio/providers/auth_provider.dart';
 
 void main() {
   group('AuthProvider Session Timeout', () {

@@ -23,7 +23,9 @@ import 'cluster_management_screen.dart' show vehicleTypeIcon;
 ///   - Terrain distribution summary cards
 ///   - AI coaching report
 class TripSummaryScreen extends StatefulWidget {
-  const TripSummaryScreen({super.key});
+  final int initialTabIndex;
+
+  const TripSummaryScreen({super.key, this.initialTabIndex = 2});
 
   @override
   State<TripSummaryScreen> createState() => _TripSummaryScreenState();
@@ -39,6 +41,11 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
   Set<String> _inactiveClusterNames = {};
   Map<String, int> _clusterMatchCounts = {};
   int _totalMatchedSegments = 0;
+
+  bool _clusterMatchesVehicle(ClusterDefinition cluster, String vehicleType) {
+    if (vehicleType.isEmpty) return true;
+    return cluster.vehicleType.isEmpty || cluster.vehicleType == vehicleType;
+  }
 
   @override
   void initState() {
@@ -60,15 +67,34 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
     // Step 1: Load cluster display data
     try {
       final allClusters = await DbHelper().getAllClusters();
-      final activeNames = {for (final c in allClusters) if (c.isActive) c.name};
       final matchCounts = await DbHelper().getClusterMatchCounts(summary.tripId);
       final totalMatched = matchCounts.values.fold(0, (a, b) => a + b);
+      final matchedNames = matchCounts.keys.toSet();
 
-      final scored = allClusters
-          .where((c) => matchCounts.containsKey(c.name))
+      // Show all active clusters relevant to this trip's vehicle type,
+      // then append any matched clusters that are now inactive.
+      final relevantActive = allClusters
+          .where((c) => c.isActive && _clusterMatchesVehicle(c, summary.vehicleType))
           .toList();
+
+      final missingMatched = allClusters
+          .where((c) => !c.isActive && matchedNames.contains(c.name))
+          .toList();
+
+      final scored = <ClusterDefinition>[
+        ...relevantActive,
+        ...missingMatched.where(
+          (c) => !relevantActive.any((a) => a.name == c.name),
+        ),
+      ]
+        ..sort((a, b) {
+          final ai = a.id ?? 1 << 30;
+          final bi = b.id ?? 1 << 30;
+          return ai.compareTo(bi);
+        });
+
       final inactiveNames = scored
-          .where((c) => !activeNames.contains(c.name))
+          .where((c) => !c.isActive)
           .map((c) => c.name)
           .toSet();
 
@@ -77,8 +103,9 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
           _scoredClusters = scored;
           _inactiveClusterNames = inactiveNames;
           _clusterMatchCounts = matchCounts;
-          _totalMatchedSegments =
-              totalMatched > 0 ? totalMatched : summary.validSegments;
+          _totalMatchedSegments = summary.validSegments > 0
+              ? summary.validSegments
+              : totalMatched;
         });
       }
     } catch (_) {
@@ -378,7 +405,12 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
   void _goHome(TripProvider provider) {
     provider.reset();
     if (!mounted) return;
-    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/home',
+      (route) => false,
+      arguments: {'initialTab': widget.initialTabIndex},
+    );
   }
 
   String _formatTime(DateTime dt) {

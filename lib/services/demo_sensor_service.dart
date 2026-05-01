@@ -4,7 +4,7 @@ import 'dart:math';
 import '../models/raw_model.dart';
 import '../config/constants.dart';
 
-/// Simulates a realistic Kozhikode → Sulthan Bathery KSRTC bus trip
+/// Simulates a realistic Kozhikode → Sulthan Bathery Traxio bus trip
 /// for emulator/desktop testing.
 ///
 /// Uses 90+ dense waypoints traced along the actual NH-766 road so the
@@ -44,7 +44,7 @@ class DemoSensorService {
   // Format: [lat, lon, altitude_m, terrain (0=plain,1=up,2=down), target_speed_kmh]
   static const List<List<double>> _waypoints = [
     // ── Kozhikode City (Plain) ──
-    // Real: Kozhikode KSRTC Bus Stand 11.2588, 75.7804
+    // Real: Kozhikode Traxio Bus Stand 11.2588, 75.7804
     [11.2588, 75.7804, 10, 0, 35],   // Kozhikode Bus Stand
     [11.2605, 75.7840, 10, 0, 30],
     [11.2625, 75.7880, 12, 0, 35],
@@ -167,7 +167,7 @@ class DemoSensorService {
     [11.6610, 76.2490, 650, 0, 35],
 
     // ── Sulthan Bathery ──
-    // Real: Sulthan Bathery KSRTC 11.6634, 76.2673
+    // Real: Sulthan Bathery Traxio 11.6634, 76.2673
     [11.6620, 76.2580, 649, 0, 30],
     [11.6628, 76.2630, 648, 0, 25],
     [11.6634, 76.2673, 647, 0, 15],  // Sulthan Bathery Bus Stand

@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ksrtc_app/analytics/feature_engine.dart';
+import 'package:traxio/analytics/feature_engine.dart';
 
 void main() {
   group('FeatureEngine - Time Domain Features', () {

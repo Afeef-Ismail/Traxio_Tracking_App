@@ -44,7 +44,7 @@ class _CoachingReportScreenState extends State<CoachingReportScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${l10n.csvSaved}: ksrtc_benchmark_${widget.tripId}.csv'),
+          content: Text('${l10n.csvSaved}: $path'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: l10n.shareCSV,

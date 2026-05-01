@@ -10,6 +10,8 @@ import '../config/constants.dart';
 class CsvExportService {
   final DbHelper _db = DbHelper();
   static final DateFormat _dateFmt = DateFormat('yyyy-MM-dd HH:mm:ss');
+  static const String _storageHelpMessage =
+      'Could not save file. Please check storage permissions in Settings → Apps → Traxio → Permissions → Storage.';
 
   static const List<String> _featureNames = [
     'ARV',
@@ -42,80 +44,104 @@ class CsvExportService {
     return cols;
   }
 
-  Future<String> exportTripCSV(String tripId) async {
+  Future<String> exportCollectionTripCSV(String tripId) async {
     final normalizedTripId = tripId.trim();
     if (normalizedTripId.isEmpty) {
       throw Exception('Invalid trip ID for export');
     }
 
+    // Get trip to extract vehicle type and date
+    final trip = await _db.getDataCollectionTripById(tripId);
+    final vehicleType = trip?['vehicle_type'] as String? ?? 'Unknown';
+    final startTime = trip?['start_time'] as DateTime? ?? DateTime.now();
+    final dateStr = DateFormat('yyyyMMdd').format(startTime);
+    final safeVehicleType = vehicleType.trim().isEmpty
+        ? 'Unknown'
+        : _sanitizeForFileName(vehicleType.trim());
+
     final rows = await _db.getSegmentsWithFeaturesForTrip(
       tripId,
       mode: 'collection',
     );
-    final path = await _writeCsvFile(
-      fileName: 'ksrtc_collection_${_sanitizeForFileName(normalizedTripId)}.csv',
+    final path = await _writeCsvFileWithMetadata(
+      fileName: 'traxio_collection_${safeVehicleType}_$dateStr.csv',
       rows: rows,
       includeDriverColumns: false,
+      vehicleType: vehicleType,
+      exportDate: startTime,
+      exportTitle: 'Traxio Data Collection Export',
     );
     return path;
   }
 
+  Future<String> exportTripCSV(String tripId) async {
+    return exportCollectionTripCSV(tripId);
+  }
+
   Future<String> exportBenchmarkTripCSV(String tripId) async {
-    try {
-      final normalizedTripId = tripId.trim();
-      if (normalizedTripId.isEmpty) {
-        throw Exception('Invalid trip ID for export');
-      }
-
-      final rows = await _db.getSegmentsWithFeaturesForTrip(
-        tripId,
-        mode: 'benchmark',
-      );
-      final scoreMap = await _db.getSegmentScoresMapForTrip(tripId);
-
-      final enrichedRows = rows.map((row) {
-        final segmentId = row['segment_id'] as int;
-        final score = scoreMap[segmentId] ?? const <String, dynamic>{};
-        return {
-          ...row,
-          'matched_cluster': score['matched_cluster'],
-          'matched_cluster_name': score['matched_cluster_name'] ?? '',
-          'cluster0_deviation': score['cluster0_deviation'],
-          'cluster1_deviation': score['cluster1_deviation'],
-        };
-      }).toList();
-
-      final headers = <String>[
-        'csv_row_number',
-        'trip_id',
-        'segment_index',
-        'start_time',
-        'end_time',
-        'duration_seconds',
-        'terrain',
-        'distance_m',
-        'start_lat',
-        'start_lon',
-        'end_lat',
-        'end_lon',
-        'nearest_landmark',
-        'sample_count',
-        'is_valid',
-        'matched_cluster',
-        'matched_cluster_name',
-        'cluster0_deviation',
-        'cluster1_deviation',
-        ...featureColumns,
-      ];
-
-      return await _writeCsvFileWithHeaders(
-        fileName: 'ksrtc_benchmark_${_sanitizeForFileName(normalizedTripId)}.csv',
-        rows: enrichedRows,
-        headers: headers,
-      );
-    } catch (e) {
-      throw Exception(e.toString());
+    final normalizedTripId = tripId.trim();
+    if (normalizedTripId.isEmpty) {
+      throw Exception('Invalid trip ID for export');
     }
+
+    // Get trip to extract vehicle type and date
+    final trip = await _db.getBenchmarkTripById(tripId);
+    final vehicleType = trip?['vehicle_type'] as String? ?? 'Unknown';
+    final startTime = trip?['start_time'] as DateTime? ?? DateTime.now();
+    final dateStr = DateFormat('yyyyMMdd').format(startTime);
+    final safeVehicleType = vehicleType.trim().isEmpty
+        ? 'Unknown'
+        : _sanitizeForFileName(vehicleType.trim());
+
+    final rows = await _db.getSegmentsWithFeaturesForTrip(
+      tripId,
+      mode: 'benchmark',
+    );
+    final scoreMap = await _db.getSegmentScoresMapForTrip(tripId);
+
+    final enrichedRows = rows.map((row) {
+      final segmentId = row['segment_id'] as int;
+      final score = scoreMap[segmentId] ?? const <String, dynamic>{};
+      return {
+        ...row,
+        'matched_cluster': score['matched_cluster'],
+        'matched_cluster_name': score['matched_cluster_name'] ?? '',
+        'cluster0_deviation': score['cluster0_deviation'],
+        'cluster1_deviation': score['cluster1_deviation'],
+      };
+    }).toList();
+
+    final headers = <String>[
+      'csv_row_number',
+      'trip_id',
+      'segment_index',
+      'start_time',
+      'end_time',
+      'duration_seconds',
+      'terrain',
+      'distance_m',
+      'start_lat',
+      'start_lon',
+      'end_lat',
+      'end_lon',
+      'nearest_landmark',
+      'sample_count',
+      'is_valid',
+      'matched_cluster',
+      'matched_cluster_name',
+      'cluster0_deviation',
+      'cluster1_deviation',
+      ...featureColumns,
+    ];
+
+    return _writeCsvFileWithHeadersAndMetadata(
+      fileName: 'traxio_benchmark_${safeVehicleType}_$dateStr.csv',
+      rows: enrichedRows,
+      headers: headers,
+      vehicleType: vehicleType,
+      exportDate: startTime,
+      exportTitle: 'Traxio Benchmark Export',
+    );
   }
 
   Future<String> exportAllCollectionCSV() async {
@@ -137,17 +163,23 @@ class CsvExportService {
     }
 
     final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    return _writeCsvFile(
-      fileName: 'ksrtc_collection_all_$stamp.csv',
+    return _writeCsvFileWithMetadata(
+      fileName: 'traxio_collection_all_$stamp.csv',
       rows: allRows,
       includeDriverColumns: true,
+      vehicleType: 'Unknown',
+      exportDate: DateTime.now(),
+      exportTitle: 'Traxio Data Collection Export',
     );
   }
 
-  Future<String> _writeCsvFile({
+  Future<String> _writeCsvFileWithMetadata({
     required String fileName,
     required List<Map<String, dynamic>> rows,
     required bool includeDriverColumns,
+    required String vehicleType,
+    required DateTime exportDate,
+    required String exportTitle,
   }) async {
     final headers = <String>[
       'csv_row_number',
@@ -169,23 +201,38 @@ class CsvExportService {
       ...featureColumns,
     ];
 
-    return _writeCsvFileWithHeaders(
+    return _writeCsvFileWithHeadersAndMetadata(
       fileName: fileName,
       rows: rows,
       headers: headers,
+      vehicleType: vehicleType,
+      exportDate: exportDate,
+      exportTitle: exportTitle,
     );
   }
 
-  Future<String> _writeCsvFileWithHeaders({
+  Future<String> _writeCsvFileWithHeadersAndMetadata({
     required String fileName,
     required List<Map<String, dynamic>> rows,
     required List<String> headers,
+    required String vehicleType,
+    required DateTime exportDate,
+    required String exportTitle,
   }) async {
     await _ensureStoragePermissionIfNeeded();
 
     final buffer = StringBuffer();
+    
+    // Add metadata rows at the top
+    buffer.writeln('# $exportTitle');
+    buffer.writeln('# Vehicle Type: $vehicleType');
+    buffer.writeln('# Export Date: ${_dateFmt.format(exportDate)}');
+    buffer.writeln(''); // blank row
+
+    // Add headers
     buffer.writeln(headers.join(','));
 
+    // Add data rows
     for (var index = 0; index < rows.length; index++) {
       final row = rows[index];
       final values = <String>[];
@@ -199,21 +246,29 @@ class CsvExportService {
       buffer.writeln(values.join(','));
     }
 
-    final downloadsDir = await _resolveDownloadsDirectory();
-    if (!downloadsDir.existsSync()) {
-      downloadsDir.createSync(recursive: true);
+    final directories = await _getExportDirectories();
+    for (final directory in directories) {
+      try {
+        if (!await directory.exists()) {
+          await directory.create(recursive: true);
+        }
+
+        final file = File(p.join(directory.path, fileName));
+        await file.writeAsString(buffer.toString(), flush: true);
+        if (!file.existsSync()) {
+          continue;
+        }
+        final fileLength = await file.length();
+        if (fileLength == 0) {
+          continue;
+        }
+        return file.path;
+      } catch (_) {
+        continue;
+      }
     }
 
-    final file = File(p.join(downloadsDir.path, fileName));
-    await file.writeAsString(buffer.toString(), flush: true);
-    if (!file.existsSync()) {
-      throw Exception('CSV write failed: file not found at ${file.path}');
-    }
-    final fileLength = await file.length();
-    if (fileLength == 0) {
-      throw Exception('CSV write failed: file is empty at ${file.path}');
-    }
-    return file.path;
+    throw Exception(_storageHelpMessage);
   }
 
   String _sanitizeForFileName(String input) {
@@ -229,7 +284,7 @@ class CsvExportService {
       if (androidInfo.version.sdkInt < 33) {
         final permissionStatus = await Permission.storage.request();
         if (!permissionStatus.isGranted) {
-          throw Exception('Storage permission denied: $permissionStatus');
+          throw Exception(_storageHelpMessage);
         }
       }
     }
@@ -261,23 +316,22 @@ class CsvExportService {
     return input;
   }
 
-  Future<Directory> _resolveDownloadsDirectory() async {
-    final publicDownloads = Directory('/storage/emulated/0/Download');
-    if (!publicDownloads.existsSync()) {
-      publicDownloads.createSync(recursive: true);
-    }
-    if (publicDownloads.existsSync()) return publicDownloads;
+  Future<List<Directory>> _getExportDirectories() async {
+    final directories = <Directory>[];
 
-    final downloads = await getDownloadsDirectory();
-    if (downloads != null) return downloads;
+    final downloads = Directory('/storage/emulated/0/Download');
+    if (await downloads.exists()) {
+      directories.add(downloads);
+    }
 
     final external = await getExternalStorageDirectory();
     if (external != null) {
-      final commonDownload = Directory('/storage/emulated/0/Download');
-      if (await commonDownload.exists()) return commonDownload;
-      return external;
+      directories.add(Directory(p.join(external.path, 'Traxio')));
     }
 
-    return await getApplicationDocumentsDirectory();
+    final docs = await getApplicationDocumentsDirectory();
+    directories.add(Directory(p.join(docs.path, 'Traxio')));
+
+    return directories;
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ksrtc_app/utils/haversine.dart';
-import 'package:ksrtc_app/utils/math_utils.dart';
+import 'package:traxio/utils/haversine.dart';
+import 'package:traxio/utils/math_utils.dart';
 
 void main() {
   group('Haversine Distance', () {

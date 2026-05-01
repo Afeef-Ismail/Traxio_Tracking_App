@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ksrtc_app/analytics/smoothing.dart';
+import 'package:traxio/analytics/smoothing.dart';
 
 void main() {
   group('Smoothing - 3-Point Moving Average', () {

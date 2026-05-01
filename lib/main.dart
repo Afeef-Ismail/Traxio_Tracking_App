@@ -15,7 +15,7 @@ import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/agreement_screen.dart';
 import 'ui/screens/consent_notice_screen.dart';
 import 'ui/screens/signup_screen.dart';
-import 'ui/screens/home_screen.dart';
+import 'ui/screens/main_shell_screen.dart';
 import 'ui/screens/admin_home_screen.dart';
 import 'ui/screens/trip_in_progress_screen.dart';
 import 'ui/screens/trip_summary_screen.dart';
@@ -44,18 +44,18 @@ Future<void> main() async {
 
   runApp(KsrtcApp(
     languageProvider: languageProvider,
-    agreementAccepted: agreementAccepted,
+    showAgreement: !agreementAccepted,
   ));
 }
 
 class KsrtcApp extends StatefulWidget {
   final LanguageProvider languageProvider;
-  final bool agreementAccepted;
+  final bool showAgreement;
 
   const KsrtcApp({
     super.key,
     required this.languageProvider,
-    required this.agreementAccepted,
+    required this.showAgreement,
   });
 
   @override
@@ -102,7 +102,7 @@ class _KsrtcAppState extends State<KsrtcApp> {
       child: Consumer<LanguageProvider>(
         builder: (context, languageProvider, child) {
           return MaterialApp(
-            title: 'KSRTC Benchmarking',
+            title: 'Traxio',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light,
             darkTheme: AppTheme.dark,
@@ -119,7 +119,7 @@ class _KsrtcAppState extends State<KsrtcApp> {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            initialRoute: widget.agreementAccepted ? '/' : '/agreement',
+            initialRoute: widget.showAgreement ? '/agreement' : '/',
             routes: {
               '/': (_) => const SplashScreen(),
               '/agreement': (_) => const AgreementScreen(),
@@ -127,7 +127,9 @@ class _KsrtcAppState extends State<KsrtcApp> {
               '/login': (_) => const LoginScreen(),
               '/consent': (_) => const ConsentNoticeScreen(),
               '/signup': (_) => const SignupScreen(),
-              '/home': (_) => const HomeScreen(),
+              '/home': (_) => MainShellScreen(
+                    onDarkModeChanged: _setDarkMode,
+                  ),
               '/admin': (_) => const AdminGuard(child: AdminHomeScreen()),
               '/trip': (_) => const TripInProgressScreen(),
               '/summary': (_) => const TripSummaryScreen(),

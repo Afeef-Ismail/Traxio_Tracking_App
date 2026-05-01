@@ -1,4 +1,4 @@
-package com.nitc.ksrtc.ksrtc_app
+package com.example.traxio
 
 import io.flutter.embedding.android.FlutterActivity
 

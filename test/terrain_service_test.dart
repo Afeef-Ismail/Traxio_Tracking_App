@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ksrtc_app/services/terrain_service.dart';
-import 'package:ksrtc_app/config/constants.dart';
+import 'package:traxio/services/terrain_service.dart';
+import 'package:traxio/config/constants.dart';
 
 void main() {
   group('TerrainService', () {

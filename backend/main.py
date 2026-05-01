@@ -1,5 +1,5 @@
 """
-KSRTC Benchmarking Backend — Feature Validation Server
+Traxio Benchmarking Backend — Feature Validation Server
 
 Provides endpoints to cross-validate mobile-computed features
 against Python (NumPy/SciPy) reference implementations.
@@ -14,7 +14,7 @@ from scipy.fft import fft as scipy_fft
 from typing import List, Dict
 
 app = FastAPI(
-    title="KSRTC Feature Validation API",
+    title="Traxio Feature Validation API",
     version="1.0.0",
 )
 
@@ -263,4 +263,4 @@ async def compare_features(req: CompareRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "ksrtc-validation"}
+    return {"status": "ok", "service": "traxio-validation"}

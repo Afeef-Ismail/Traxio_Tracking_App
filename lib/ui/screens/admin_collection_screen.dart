@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/trip_model.dart';
@@ -53,12 +52,12 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
         throw Exception('Invalid trip ID for export');
       }
 
-      final path = await _csvExportService.exportTripCSV(tripId);
+      final path = await _csvExportService.exportCollectionTripCSV(tripId);
       final exportedFile = XFile(path);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved to Downloads: ${p.basename(path)}'),
+          content: Text('CSV saved to: $path'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Share',
@@ -124,7 +123,7 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Combined CSV saved to Downloads'),
+          content: Text('Combined CSV saved to: $path'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Share',

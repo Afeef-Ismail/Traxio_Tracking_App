@@ -18,14 +18,11 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Check onboarding status and navigate accordingly
     Timer(const Duration(seconds: 2), () async {
-      if (mounted) {
-        final prefs = await SharedPreferences.getInstance();
-        final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
-        
-        final route = onboardingComplete ? '/login' : '/onboarding';
-        Navigator.of(context).pushReplacementNamed(route);
+      final prefs = await SharedPreferences.getInstance();
+      final agreementAccepted = prefs.getBool('data_agreement_accepted') ?? false;
+      if (mounted && agreementAccepted) {
+        Navigator.of(context).pushReplacementNamed('/login');
       }
     });
   }
@@ -57,7 +54,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
               // ─── App Name ──────────────────────────────────────────
               const Text(
-                'KSRTC',
+                'Traxio',
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.w700,
@@ -67,7 +64,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Driver Benchmarking System',
+                'Vehicle Motion Data Collection',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w400,

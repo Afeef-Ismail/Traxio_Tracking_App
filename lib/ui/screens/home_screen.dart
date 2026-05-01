@@ -11,7 +11,6 @@ import '../widgets/big_speed_display.dart';
 import '../widgets/terrain_badge.dart';
 import '../widgets/buttons.dart';
 import '../theme/app_colors.dart';
-import 'data_collection_screen.dart';
 import 'calibration_screen.dart';
 import '../../services/calibration_service.dart';
 import '../../config/constants.dart';
@@ -30,11 +29,14 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen>
+  with WidgetsBindingObserver, TickerProviderStateMixin {
   Timer? _sessionTimer;
   bool _pendingStartTripAfterLocationSettings = false;
   bool _isCalibrated = false;
   List<String> _activeVehicleTypes = [];
+  late final AnimationController _calibrationReminderController;
+  late final Animation<double> _calibrationReminderOpacity;
 
   final CalibrationService _calibrationService = CalibrationService();
 
@@ -42,6 +44,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _calibrationReminderController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    );
+    _calibrationReminderOpacity = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 1,
+      ),
+      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 3),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 1,
+      ),
+      TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 3),
+    ]).animate(_calibrationReminderController);
     // Check session timeout every 5 minutes
     _sessionTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       final auth = context.read<AuthProvider>();
@@ -56,7 +76,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _loadCalibrationStatus() async {
     await _calibrationService.load();
     if (mounted) {
-      setState(() => _isCalibrated = _calibrationService.isCalibrated);
+      setState(() {
+        _isCalibrated = _calibrationService.isCalibrated;
+      });
+      if (_isCalibrated) {
+        _calibrationReminderController.stop();
+      } else if (!_calibrationReminderController.isAnimating) {
+        _calibrationReminderController.repeat();
+      }
     }
   }
 
@@ -120,6 +147,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _sessionTimer?.cancel();
+    _calibrationReminderController.dispose();
     super.dispose();
   }
 
@@ -150,7 +178,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await provider.startTrip();
     if (!mounted) return;
     if (provider.state == TripState.recording) {
-      Navigator.of(context).pushReplacementNamed('/trip');
+      Navigator.of(context).pushReplacementNamed(
+        '/trip',
+        arguments: {'sourceTab': 2},
+      );
     }
   }
 
@@ -217,7 +248,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await provider.startTrip(vehicleType: vehicleType);
     if (!mounted) return;
     if (provider.state == TripState.recording) {
-      Navigator.of(context).pushReplacementNamed('/trip');
+      Navigator.of(context).pushReplacementNamed(
+        '/trip',
+        arguments: {'sourceTab': 2},
+      );
     }
   }
 
@@ -266,82 +300,72 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final provider = context.watch<TripProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-        floatingActionButton: AppConstants.demoMode
-            ? null
-            : FloatingActionButton(
-                mini: true,
-                tooltip: 'Calibrate Sensors',
-                backgroundColor:
-                    _isCalibrated ? AppColors.success : AppColors.warning,
-                foregroundColor: Colors.white,
-                onPressed: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const CalibrationScreen(),
-                    ),
-                  );
-                  await _loadCalibrationStatus();
-                },
-                child: Icon(
-                  _isCalibrated ? Icons.check_rounded : Icons.tune_rounded,
-                ),
+    return Scaffold(
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+      floatingActionButton: AppConstants.demoMode
+          ? null
+          : FloatingActionButton(
+              mini: true,
+              tooltip: 'Calibrate Sensors',
+              backgroundColor:
+                  _isCalibrated ? AppColors.success : AppColors.warning,
+              foregroundColor: Colors.white,
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const CalibrationScreen(),
+                  ),
+                );
+                await _loadCalibrationStatus();
+              },
+              child: Icon(
+                _isCalibrated ? Icons.check_rounded : Icons.tune_rounded,
               ),
-        body: SafeArea(
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkCard : AppColors.lightCard,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
-                  ),
-                ),
-                child: TabBar(
-                  indicatorColor: AppColors.primary,
-                  labelColor: AppColors.primary,
-                  unselectedLabelColor:
-                      isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
-                  labelStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  unselectedLabelStyle: const TextStyle(
-                    fontSize: 13,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  tabs: [
-                    Tab(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(l10n.dataCollection),
+            ),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _buildBenchmarkTab(provider, isDark, l10n),
+            ),
+            if (AppConstants.demoMode == false && !_isCalibrated)
+              Positioned(
+                left: 18,
+                bottom: 86,
+                child: FadeTransition(
+                  opacity: _calibrationReminderOpacity,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.black.withValues(alpha: 0.65)
+                          : Colors.white.withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.35),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      child: Text(
+                        'Tap to calibrate',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.warning,
+                        ),
                       ),
                     ),
-                    Tab(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(l10n.benchmark),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    const DataCollectionScreen(),
-                    _buildBenchmarkTab(provider, isDark, l10n),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -379,46 +403,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ],
                 ),
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed('/profile');
-                    },
-                    icon: Icon(
-                      Icons.person_rounded,
-                      color: isDark
-                          ? AppColors.textOnDarkSecondary
-                          : AppColors.textSecondary,
-                    ),
-                    tooltip: l10n.driverProfile,
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed('/history');
-                    },
-                    icon: Icon(
-                      Icons.history_rounded,
-                      color: isDark
-                          ? AppColors.textOnDarkSecondary
-                          : AppColors.textSecondary,
-                    ),
-                    tooltip: l10n.tripHistory,
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed('/settings');
-                    },
-                    icon: Icon(
-                      Icons.settings_rounded,
-                      color: isDark
-                          ? AppColors.textOnDarkSecondary
-                          : AppColors.textSecondary,
-                    ),
-                    tooltip: l10n.settings,
-                  ),
-                ],
               ),
             ],
           ),

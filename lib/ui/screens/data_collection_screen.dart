@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -7,6 +10,7 @@ import '../../database/db_helper.dart';
 import '../../models/trip_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
+import '../../services/calibration_service.dart';
 import '../../services/csv_export_service.dart';
 import '../../utils/landmark_utils.dart';
 import '../theme/app_colors.dart';
@@ -14,6 +18,7 @@ import '../widgets/big_speed_display.dart';
 import '../widgets/buttons.dart';
 import '../widgets/map_widget.dart';
 import '../widgets/terrain_badge.dart';
+import 'calibration_screen.dart';
 import 'cluster_management_screen.dart' show vehicleTypeIcon;
 
 class DataCollectionScreen extends StatefulWidget {
@@ -26,16 +31,21 @@ class DataCollectionScreen extends StatefulWidget {
 class _DataCollectionScreenState extends State<DataCollectionScreen> {
   final DbHelper _db = DbHelper();
   final CsvExportService _csvExportService = CsvExportService();
+  final CalibrationService _calibrationService = CalibrationService();
 
   double _segmentDistanceM = 100.0;
   bool _loading = true;
   bool _starting = false;
   String? _exportingTripId;
   List<DataCollectionTrip> _recentTrips = [];
-  bool _requestedInitialFix = false;
-  double? _initialCenterLat;
-  double? _initialCenterLon;
   String _selectedVehicleType = '';
+  bool _isCalibrated = false;
+
+  // Idle screen map state
+  late MapController _idleMapController;
+  LatLng? _currentPosition;
+  StreamSubscription<Position>? _positionStreamSubscription;
+  bool _gettingInitialLocation = true;
 
   final List<String> _vehicleTypes = const [
     'Bus',
@@ -49,7 +59,66 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   @override
   void initState() {
     super.initState();
+    _idleMapController = MapController();
     _loadInitialData();
+    _loadCalibrationStatus();
+    _initializeIdleMapLocation();
+  }
+
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadCalibrationStatus() async {
+    await _calibrationService.load();
+    if (mounted) {
+      setState(() {
+        _isCalibrated = _calibrationService.isCalibrated;
+      });
+    }
+  }
+
+  Future<void> _initializeIdleMapLocation() async {
+    _startPositionStream();
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 8),
+      );
+      if (!mounted) return;
+      setState(() {
+        _currentPosition = LatLng(pos.latitude, pos.longitude);
+        _gettingInitialLocation = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _currentPosition = const LatLng(11.2588, 75.7804);
+        _gettingInitialLocation = false;
+      });
+    }
+  }
+
+  void _startPositionStream() {
+    try {
+      _positionStreamSubscription?.cancel();
+      _positionStreamSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 0,
+        ),
+      ).listen((Position pos) {
+        if (!mounted) return;
+        setState(() {
+          _currentPosition = LatLng(pos.latitude, pos.longitude);
+          _gettingInitialLocation = false;
+        });
+      });
+    } catch (_) {
+      // Silently fail - position stream may not be available
+    }
   }
 
   Future<void> _loadInitialData() async {
@@ -98,6 +167,30 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   }
 
   Future<void> _startCollection() async {
+    if (!_isCalibrated) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Please calibrate first for accurate data. Tap the sensor button at the bottom left.',
+          ),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Calibrate',
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const CalibrationScreen(),
+                ),
+              );
+              await _loadCalibrationStatus();
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     final serviceEnabled = await _ensureLocationServiceEnabledForCollectionStart();
     if (!serviceEnabled || !mounted) return;
 
@@ -108,34 +201,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     );
     if (!mounted) return;
     setState(() => _starting = false);
-  }
-
-  Future<void> _requestInitialMapFix() async {
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 5),
-      );
-      if (!mounted) return;
-      setState(() {
-        _initialCenterLat = pos.latitude;
-        _initialCenterLon = pos.longitude;
-      });
-      return;
-    } catch (_) {
-      // Fall back to last known fix.
-    }
-
-    try {
-      final last = await Geolocator.getLastKnownPosition();
-      if (!mounted || last == null) return;
-      setState(() {
-        _initialCenterLat = last.latitude;
-        _initialCenterLon = last.longitude;
-      });
-    } catch (_) {
-      // Ignore if no cached fix available.
-    }
   }
 
   Future<bool> _ensureLocationServiceEnabledForCollectionStart() async {
@@ -181,11 +246,11 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     final l10n = AppLocalizations.of(context)!;
     setState(() => _exportingTripId = tripId);
     try {
-      final path = await _csvExportService.exportTripCSV(tripId);
+      final path = await _csvExportService.exportCollectionTripCSV(tripId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${l10n.csvSaved}: ksrtc_collection_$tripId.csv'),
+          content: Text('${l10n.csvSaved}: $path'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: l10n.shareCSV,
@@ -213,6 +278,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
   String _friendlyExportErrorMessage(AppLocalizations l10n, String rawError) {
     final normalized = rawError.toLowerCase();
+    if (normalized.contains('could not save file')) {
+      return rawError.replaceFirst('Exception: ', '');
+    }
     if (normalized.contains('permission')) {
       return l10n.permissionDenied;
     }
@@ -294,16 +362,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
     final recording = provider.isCollectionMode && provider.state == TripState.recording;
 
-    if (recording && !_requestedInitialFix) {
-      _requestedInitialFix = true;
-      _requestInitialMapFix();
-    }
-    if (!recording && _requestedInitialFix) {
-      _requestedInitialFix = false;
-      _initialCenterLat = null;
-      _initialCenterLon = null;
-    }
-
     return recording
           ? _buildRecordingState(provider, isDark, l10n)
           : _buildIdleState(isDark, l10n);
@@ -313,6 +371,45 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.4,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                MapWidget(
+                  latitude: _currentPosition?.latitude,
+                  longitude: _currentPosition?.longitude,
+                  controller: _idleMapController,
+                ),
+                if (_currentPosition == null && _gettingInitialLocation)
+                  Container(
+                    color: isDark ? Colors.black.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.15),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Getting your location...',
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppColors.textOnDarkSecondary
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -594,8 +691,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                 longitude: provider.currentLon,
                 trail: provider.gpsTrail,
                 segmentMarkers: provider.segmentMarkers,
-                initialLatitude: _initialCenterLat,
-                initialLongitude: _initialCenterLon,
                 isRecording: provider.state == TripState.recording,
                 bearing: provider.currentBearing,
                 speedKmh: provider.currentSpeed * 3.6,

@@ -14,7 +14,9 @@ import 'coaching_report_screen.dart';
 /// Shows each trip with overall deviation, cluster matching,
 /// terrain distribution chips, and tap to view summary.
 class TripHistoryScreen extends StatefulWidget {
-  const TripHistoryScreen({super.key});
+  final bool embedded;
+
+  const TripHistoryScreen({super.key, this.embedded = false});
 
   @override
   State<TripHistoryScreen> createState() => _TripHistoryScreenState();
@@ -51,7 +53,7 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${l10n.csvSaved}: ksrtc_benchmark_$tripId.csv'),
+          content: Text('${l10n.csvSaved}: $path'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: l10n.shareCSV,
@@ -80,13 +82,15 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.tripHistory),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(l10n.tripHistory),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())

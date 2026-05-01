@@ -135,7 +135,7 @@ class GroqCoachingService {
             .round();
 
     return '''
-You are an expert bus driving coach for KSRTC (Kerala State Road Transport Corporation).
+You are an expert bus driving coach for Traxio (Kerala State Road Transport Corporation).
 Analyze this trip data from a bus on the NH-766 (Kozhikode–Sulthan Bathery ghat route)
 and provide a brief coaching report.
 

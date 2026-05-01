@@ -160,11 +160,11 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
   Future<void> _exportCsv() async {
     setState(() => _exporting = true);
     try {
-      final path = await _csvExportService.exportTripCSV(widget.tripId);
+      final path = await _csvExportService.exportCollectionTripCSV(widget.tripId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('CSV saved: ${path.split('/').last}'),
+          content: Text('CSV saved to: $path'),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Share',
@@ -175,10 +175,8 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not save the file. Please check your storage space and try again.',
-          ),
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -190,14 +188,14 @@ class _DataViewerScreenState extends State<DataViewerScreen> {
   Future<void> _openInApp() async {
     setState(() => _exporting = true);
     try {
-      final path = await _csvExportService.exportTripCSV(widget.tripId);
+      final path = await _csvExportService.exportCollectionTripCSV(widget.tripId);
       if (!mounted) return;
       await OpenFile.open(path);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not open the file. Please try exporting again.'),
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           behavior: SnackBarBehavior.floating,
         ),
       );

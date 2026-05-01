@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// KSRTC Master Driver Benchmarking System — Mandatory Color System.
+/// Traxio Driver Benchmarking System — Mandatory Color System.
 ///
 /// Transportation-grade professional palette.
 /// Do NOT change these values.

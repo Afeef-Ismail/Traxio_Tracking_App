@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:ksrtc_app/providers/auth_provider.dart';
-import 'package:ksrtc_app/providers/trip_provider.dart';
-import 'package:ksrtc_app/ui/screens/login_screen.dart';
-import 'package:ksrtc_app/config/constants.dart';
+import 'package:traxio/providers/auth_provider.dart';
+import 'package:traxio/providers/trip_provider.dart';
+import 'package:traxio/ui/screens/login_screen.dart';
+import 'package:traxio/config/constants.dart';
 
 // ═══════════════════════════════════════════════════════════════════════
 // FakeAuthProvider — replaces DB-backed login with in-memory credentials

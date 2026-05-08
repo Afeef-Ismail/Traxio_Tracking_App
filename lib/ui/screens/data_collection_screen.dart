@@ -650,7 +650,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   Widget _buildRecordingState(
       TripProvider provider, bool isDark, AppLocalizations l10n) {
     final nearest = _nearestLandmarkLabel(provider);
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -682,8 +682,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Expanded(
-            flex: 5,
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.35,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: MapWidget(
@@ -699,69 +699,62 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Expanded(
-            flex: 5,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              BigSpeedDisplay(speedMs: provider.currentSpeed, compact: false),
+              TerrainBadge(terrain: provider.currentTerrain, large: true),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkCard : AppColors.lightCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+              ),
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    BigSpeedDisplay(speedMs: provider.currentSpeed, compact: false),
-                    TerrainBadge(terrain: provider.currentTerrain, large: true),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkCard : AppColors.lightCard,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.nearestLandmark,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? AppColors.textOnDarkSecondary : AppColors.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        nearest,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${l10n.segments}: ${provider.segmentsCompleted}',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
+                Text(
+                  l10n.nearestLandmark,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.textOnDarkSecondary : AppColors.textMuted,
                   ),
                 ),
-                const Spacer(),
-                PrimaryButton(
-                  label: l10n.stopCollection,
-                  icon: Icons.stop_rounded,
-                  color: AppColors.alert,
-                  onPressed:
-                      provider.state == TripState.recording ? _stopCollection : null,
+                const SizedBox(height: 4),
+                Text(
+                  nearest,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '${l10n.segments}: ${provider.segmentsCompleted}',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                  ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          PrimaryButton(
+            label: l10n.stopCollection,
+            icon: Icons.stop_rounded,
+            color: AppColors.alert,
+            onPressed:
+                provider.state == TripState.recording ? _stopCollection : null,
+          ),
+          const SizedBox(height: 16),
         ],
       ),
     );

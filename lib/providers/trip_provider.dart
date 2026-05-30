@@ -1,16 +1,20 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../config/constants.dart';
 import '../services/sensor_service.dart';
 import '../services/demo_sensor_service.dart';
 import '../services/segmentation_service.dart';
 import '../services/trip_processor.dart';
+import '../services/firebase_sync_service.dart';
 import '../analytics/trip_analytics.dart';
 import '../models/raw_model.dart';
 import '../models/trip_model.dart';
@@ -50,7 +54,7 @@ class SegmentDetail {
 
 /// Central state manager for trip recording and processing.
 /// Wires together sensor → segmentation → processing → analytics.
-class TripProvider extends ChangeNotifier {
+class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
   // Real sensors (used when demoMode = false)
   SensorService? _sensorService;
   // Simulated sensors (used when demoMode = true)
@@ -60,6 +64,9 @@ class TripProvider extends ChangeNotifier {
   final TripProcessor _tripProcessor = TripProcessor();
   final TripAnalytics _tripAnalytics = TripAnalytics();
   final DbHelper _db = DbHelper();
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription? _connectivitySubscription;
+  bool _retryInProgress = false;
 
   TripProvider() {
     if (AppConstants.demoMode) {
@@ -67,6 +74,8 @@ class TripProvider extends ChangeNotifier {
     } else {
       _sensorService = SensorService();
     }
+    WidgetsBinding.instance.addObserver(this);
+    _initConnectivityRetryListener();
   }
 
   // ─── State ─────────────────────────────────────────────────────────
@@ -407,6 +416,8 @@ class TripProvider extends ChangeNotifier {
         vehicleType: _selectedVehicleType,
       );
 
+      await FirebaseSyncService.instance.syncBenchmarkTrip(_tripId);
+
       // Clear benchmark cache
       _tripProcessor.clearBenchmarkCache();
 
@@ -451,6 +462,8 @@ class TripProvider extends ChangeNotifier {
         DateTime.now().millisecondsSinceEpoch,
         _segmentsCompleted,
       );
+
+      await FirebaseSyncService.instance.syncCollectionTrip(_tripId);
 
       _tripProcessor.clearBenchmarkCache();
       _state = TripState.idle;
@@ -599,20 +612,194 @@ class TripProvider extends ChangeNotifier {
 
   /// Get all past trip summaries.
   Future<List<TripSummary>> getTripHistory() async {
+    try {
+      final cloudTrips = await FirebaseSyncService.instance.getCurrentUserBenchmarkTrips();
+      if (cloudTrips.isNotEmpty || FirebaseAuth.instance.currentUser != null) {
+        return cloudTrips;
+      }
+      final localTrips = await _db.getAllTripSummaries();
+      if (localTrips.isNotEmpty) {
+        return localTrips;
+      }
+      return await FirebaseSyncService.instance.getPublishedBenchmarkTrips();
+    } catch (_) {
+      // Cloud/local failed, try public Firestore fallback
+      try {
+        return await FirebaseSyncService.instance.getPublishedBenchmarkTrips();
+      } catch (_) {
+        // Both failed, return empty
+        return [];
+      }
+    }
+  }
+
+  /// Get local trip summaries only (no Firestore fallback).
+  /// Used by admin dashboard as a fallback when Firestore is unavailable.
+  Future<List<TripSummary>> getLocalTripSummaries() async {
     return await _db.getAllTripSummaries();
   }
 
   Future<List<DataCollectionTrip>> getDataCollectionTripsForUser(int userId) async {
+    try {
+      final cloudTrips = await FirebaseSyncService.instance.getCurrentUserCollectionTrips();
+      if (cloudTrips.isNotEmpty || FirebaseAuth.instance.currentUser != null) {
+        return cloudTrips;
+      }
+    } catch (_) {
+      // Ignore cloud lookup failure and fall back to local.
+    }
+
     return await _db.getDataCollectionTripsForUser(userId);
   }
 
   Future<List<DataCollectionTrip>> getAllDataCollectionTrips() async {
-    return await _db.getAllDataCollectionTrips();
+    try {
+      final localTrips = await _db.getAllDataCollectionTrips();
+      if (localTrips.isNotEmpty) {
+        return localTrips;
+      }
+      // Fallback to Firestore if local is empty
+      try {
+        return await FirebaseSyncService.instance.getPublishedCollectionTrips();
+      } catch (_) {
+        // Firestore failed, return empty list
+        return [];
+      }
+    } catch (_) {
+      // Local DB failed, try Firestore
+      try {
+        return await FirebaseSyncService.instance.getPublishedCollectionTrips();
+      } catch (_) {
+        // Both failed, return empty
+        return [];
+      }
+    }
+  }
+
+  /// Firestore-authoritative read with local reconciliation.
+  ///
+  /// Used by admin trip screens (initial open + pull-to-refresh). Unlike
+  /// [getAllDataCollectionTrips] (which is local-first and therefore keeps
+  /// showing trips that were deleted from Firestore), this:
+  ///   1. Reads Firestore first as the source of truth.
+  ///   2. Reconciles: any trip present locally but missing from Firestore is
+  ///      re-marked 'pending' and re-uploaded (if it has data worth syncing).
+  ///   3. Returns the post-reconcile Firestore view.
+  ///
+  /// If Firestore is unreachable (offline), it degrades gracefully to the
+  /// local list without destructive reconciliation.
+  Future<List<DataCollectionTrip>> getAllDataCollectionTripsReconciled() async {
+    List<DataCollectionTrip> cloudTrips;
+    try {
+      cloudTrips =
+          await FirebaseSyncService.instance.getPublishedCollectionTrips();
+    } catch (e) {
+      // Cloud unreachable — show local data, do not reconcile destructively.
+      debugPrint('Reconcile skipped (cloud read failed): $e');
+      return await _db.getAllDataCollectionTrips();
+    }
+
+    final localTrips = await _db.getAllDataCollectionTrips();
+    final cloudIds = cloudTrips.map((t) => t.tripId).toSet();
+
+    var resynced = 0;
+    for (final local in localTrips) {
+      if (local.tripId.isEmpty || cloudIds.contains(local.tripId)) {
+        continue;
+      }
+      // Present locally but not in Firestore. Only re-upload trips that
+      // actually carry segment data; 0-segment trips don't belong in cloud.
+      if (local.totalSegments > 0) {
+        await _db.setDataCollectionTripSyncStatus(local.tripId, 'pending');
+        final ok =
+            await FirebaseSyncService.instance.syncCollectionTrip(local.tripId);
+        if (ok) resynced++;
+        debugPrint(
+            'Reconcile: local-only trip ${local.tripId} '
+            '(${local.totalSegments} segments) re-sync ${ok ? 'succeeded' : 'queued/failed'}.');
+      }
+    }
+
+    if (resynced == 0) {
+      return cloudTrips;
+    }
+
+    // Re-read so the UI reflects the freshly re-uploaded trips.
+    try {
+      return await FirebaseSyncService.instance.getPublishedCollectionTrips();
+    } catch (_) {
+      return cloudTrips;
+    }
+  }
+
+  void _initConnectivityRetryListener() {
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((result) {
+      if (result != ConnectivityResult.none) {
+        _retryPendingSyncs();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _retryPendingSyncs();
+    }
+  }
+
+  Future<void> _retryPendingSyncs() async {
+    if (_retryInProgress) return;
+    _retryInProgress = true;
+
+    try {
+      if (FirebaseAuth.instance.currentUser == null) {
+        return;
+      }
+
+      final unsyncedBenchmarks = await _db.getUnsyncedTripSummaries();
+      for (final row in unsyncedBenchmarks) {
+        final tripId = row['trip_id']?.toString() ?? '';
+        final syncStatus = (row['sync_status'] as String?) ?? 'pending';
+        if (tripId.isEmpty || syncStatus == 'synced') continue;
+        await FirebaseSyncService.instance.syncBenchmarkTrip(tripId);
+      }
+
+      final unsyncedCollections = await _db.getUnsyncedDataCollectionTrips();
+      for (final row in unsyncedCollections) {
+        final tripId = row['trip_id']?.toString() ?? '';
+        final syncStatus = (row['sync_status'] as String?) ?? 'pending';
+        if (tripId.isEmpty || syncStatus == 'synced') continue;
+        await FirebaseSyncService.instance.syncCollectionTrip(tripId);
+      }
+    } finally {
+      _retryInProgress = false;
+    }
   }
 
   /// Load a specific trip summary (for re-viewing from history).
   Future<TripSummary?> loadTripSummary(String tripId) async {
-    return await _db.getTripSummary(tripId);
+    try {
+      final localSummary = await _db.getTripSummary(tripId);
+      if (localSummary != null) {
+        return localSummary;
+      }
+      // Fallback to Firestore if not in local DB
+      try {
+        return await FirebaseSyncService.instance.getPublishedBenchmarkTrip(tripId);
+      } catch (_) {
+        // Firestore failed, return null
+        return null;
+      }
+    } catch (_) {
+      // Local DB failed, try Firestore
+      try {
+        return await FirebaseSyncService.instance.getPublishedBenchmarkTrip(tripId);
+      } catch (_) {
+        // Both failed, return null
+        return null;
+      }
+    }
   }
 
   /// Get all segment details for a trip (for segment list / drill-down).
@@ -655,6 +842,31 @@ class TripProvider extends ChangeNotifier {
     final segments = await _db.getSegmentsForTrip(tripId);
     final scores = await _db.getScoresForTrip(tripId);
 
+    if (segments.isEmpty) {
+      final cloudSegments = await FirebaseSyncService.instance.getPublishedBenchmarkSegments(tripId);
+      final cloudScores = await FirebaseSyncService.instance.getPublishedBenchmarkScores(tripId);
+      final cloudScoreMap = <int, SegmentScore>{};
+      for (final score in cloudScores) {
+        cloudScoreMap[score.segmentId] = score;
+      }
+
+      final List<SegmentDetail> cloudDetails = [];
+      for (final segment in cloudSegments) {
+        if (!segment.isValid || segment.id == null) continue;
+        final sc = cloudScoreMap[segment.id!];
+        cloudDetails.add(SegmentDetail(
+          segmentIndex: segment.segmentIndex,
+          terrain: segment.terrain,
+          features: const {},
+          cluster0Deviation: sc?.cluster0Deviation ?? 0.0,
+          cluster1Deviation: sc?.cluster1Deviation ?? 0.0,
+          matchedCluster: sc?.matchedCluster ?? -1,
+          nearestLandmark: segment.nearestLandmark,
+        ));
+      }
+      return cloudDetails;
+    }
+
     final scoreMap = <int, SegmentScore>{};
     for (final s in scores) {
       scoreMap[s.segmentId] = s;
@@ -685,6 +897,8 @@ class TripProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription?.cancel();
     _gpsWatchdogTimer?.cancel();
     if (AppConstants.demoMode) {
       _demoSensorService?.dispose();

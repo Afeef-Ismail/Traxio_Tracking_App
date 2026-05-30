@@ -1,0 +1,102 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    function ownsUserDoc(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isAdmin() || ownsUserDoc(userId);
+
+      match /trips/{tripId} {
+        allow read, write: if isAdmin() || ownsUserDoc(userId);
+
+        match /segments/{segmentId} {
+          allow read, write: if isAdmin() || ownsUserDoc(userId);
+        }
+
+        match /scores/{scoreId} {
+          allow read, write: if isAdmin() || ownsUserDoc(userId);
+        }
+      }
+
+      match /collectionTrips/{tripId} {
+        allow read, write: if isAdmin() || ownsUserDoc(userId);
+      }
+    }
+
+    match /admins/{adminId} {
+      allow read: if ownsUserDoc(adminId) || isAdmin();
+      // Self-seed: a signed-in user may create/update ONLY their own admin
+      // doc (adminId == their uid). This breaks the chicken-and-egg deadlock
+      // where isAdmin() requires the admins/{uid} doc to already exist, so a
+      // wiped admin doc could never be re-created on next login. Deletes stay
+      // admin-only.
+      allow create, update: if ownsUserDoc(adminId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /benchmarkTrips/{tripId} {
+      allow read: if isSignedIn();
+      // Any authenticated user may publish/update a benchmark trip; deletes
+      // stay admin-only.
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+
+      match /segments/{segmentId} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
+      }
+
+      match /scores/{scoreId} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /collectionTrips/{tripId} {
+      allow read: if isSignedIn();
+      // Any authenticated user may publish/update a collection trip; deletes
+      // stay admin-only.
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+
+      match /rows/{rowId} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Keep collectionGroup access admin-only for mirror cleanup.
+    match /{path=**}/collectionTrips/{tripDoc} {
+      allow read, delete: if isAdmin();
+      match /rows/{rowId} {
+        allow read, delete: if isAdmin();
+      }
+    }
+
+    match /{path=**}/trips/{tripDoc} {
+      allow read, delete: if isAdmin();
+      match /segments/{segmentId} {
+        allow read, delete: if isAdmin();
+      }
+      match /scores/{scoreId} {
+        allow read, delete: if isAdmin();
+      }
+    }
+  }
+}

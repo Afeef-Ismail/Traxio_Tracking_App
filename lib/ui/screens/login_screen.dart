@@ -10,7 +10,7 @@ import 'consent_notice_screen.dart';
 
 /// Login Screen — Authentication gate.
 ///
-/// Username + password fields, show/hide toggle, error message.
+/// Username/email + password fields, show/hide toggle, error message.
 /// Admin → AdminHomeScreen, Driver → HomeScreen.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -146,12 +146,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Username
+                      // Username / Email
                       TextFormField(
                         controller: _usernameController,
                         textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
-                          labelText: l10n?.username ?? 'Username',
+                          labelText: 'Username or Email',
                           prefixIcon: const Icon(Icons.person_outline),
                           filled: true,
                           fillColor: isDark
@@ -183,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return l10n?.username ?? 'Username';
+                            return 'Username or Email';
                           }
                           return null;
                         },
@@ -369,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         );
 
-                        if (username != null && mounted) {
+                          if (username != null && mounted) {
                           _usernameController.text = username;
                         }
                       },

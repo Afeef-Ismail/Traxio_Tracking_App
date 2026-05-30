@@ -5,12 +5,13 @@ import '../../providers/auth_provider.dart';
 import '../../providers/trip_provider.dart';
 import '../../models/trip_model.dart';
 import '../../services/csv_export_service.dart';
+import '../../services/firebase_sync_service.dart';
 import '../theme/app_colors.dart';
-import 'coaching_report_screen.dart';
 import 'threshold_editor_screen.dart';
 import 'driver_management_screen.dart';
-import 'admin_collection_screen.dart';
 import 'cluster_management_screen.dart';
+import 'data_viewer_screen.dart';
+import 'trip_history_screen.dart';
 
 /// Admin Home Screen — dashboard for admin users.
 ///
@@ -24,9 +25,10 @@ class AdminHomeScreen extends StatefulWidget {
 }
 
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
-  List<TripSummary> _trips = [];
+  List<DataCollectionTrip> _trips = [];
   bool _loading = true;
   String? _exportingTripId;
+  bool _exportingAll = false;
   final CsvExportService _csvExportService = CsvExportService();
 
   @override
@@ -36,13 +38,50 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   }
 
   Future<void> _loadTrips() async {
-    final provider = context.read<TripProvider>();
-    final trips = await provider.getTripHistory();
-    if (mounted) {
-      setState(() {
-        _trips = trips;
-        _loading = false;
-      });
+    try {
+      // Firestore-authoritative read with local reconciliation (see
+      // TripProvider.getAllDataCollectionTripsReconciled). Prevents stale
+      // local-only trips from lingering after a manual Firestore delete.
+      final trips = await context
+          .read<TripProvider>()
+          .getAllDataCollectionTripsReconciled();
+      if (mounted) {
+        setState(() {
+          _trips = trips;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      // Fallback to local database when Firestore is not available
+      try {
+        final localTrips = await context.read<TripProvider>().getAllDataCollectionTrips();
+        if (mounted) {
+          setState(() {
+            _trips = localTrips;
+            _loading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Showing collection trips from local database'),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e2) {
+        if (mounted) {
+          setState(() {
+            _trips = [];
+            _loading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error loading collection trips: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -54,7 +93,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         throw Exception('Invalid trip ID for export');
       }
 
-      final path = await _csvExportService.exportBenchmarkTripCSV(tripId);
+      final path = await _csvExportService.exportCollectionTripCSV(tripId);
       final exportedFile = XFile(path);
 
       if (!mounted) return;
@@ -83,6 +122,99 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     }
   }
 
+  Future<void> _exportAllAsZip() async {
+    setState(() => _exportingAll = true);
+    try {
+      final path = await _csvExportService.exportAllCollectionTripsAsZip();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ZIP file saved to: $path'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Share',
+            onPressed: () => Share.shareXFiles([XFile(path)]),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exportingAll = false);
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteCollection(DataCollectionTrip trip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Collection Trip?'),
+        content: const Text(
+          'This will permanently delete all data for this collection trip including segments and sensor data.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.alert),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Deleting collection trip...'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      try {
+        final success = await FirebaseSyncService.instance
+            .deletePublishedCollectionTrip(trip.tripId);
+
+        if (!mounted) return;
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Collection trip deleted successfully'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          _loadTrips();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to delete collection trip'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Delete error: ${e.toString()}'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
   void _logout() {
     context.read<AuthProvider>().logout();
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
@@ -105,9 +237,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          children: [
+        child: RefreshIndicator(
+          onRefresh: _loadTrips,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            children: [
             // ─── Management Cards ────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -146,14 +281,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                     },
                   ),
                   _AdminActionCard(
-                    icon: Icons.dataset_rounded,
-                    label: 'Data Collection\nTrips',
+                    icon: Icons.track_changes_rounded,
+                    label: 'Benchmarking\nTrips',
                     color: AppColors.success,
                     isDark: isDark,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const AdminCollectionScreen(),
+                          builder: (_) => const TripHistoryScreen(),
                         ),
                       );
                     },
@@ -176,13 +311,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             ),
             const SizedBox(height: 24),
 
-            // ─── All Trips Header ────────────────────────────────────
+            // ─── Data Collection Header ────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
                   Icon(
-                    Icons.history_rounded,
+                    Icons.dataset_rounded,
                     size: 20,
                     color: isDark
                         ? AppColors.textOnDarkSecondary
@@ -190,7 +325,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'All Trips',
+                    'Collected Data',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -201,7 +336,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                   ),
                   const Spacer(),
                   Text(
-                    '${_trips.length} trips',
+                    '${_trips.length} collections',
                     style: TextStyle(
                       fontSize: 13,
                       color: isDark
@@ -212,6 +347,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 8),
+            if (!_loading && _trips.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: _exportingAll ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.download_rounded),
+                    label: Text(_exportingAll ? 'Exporting...' : 'Export All as ZIP'),
+                    onPressed: _exportingAll ? null : _exportAllAsZip,
+                  ),
+                ),
+              ),
             const SizedBox(height: 12),
 
             // ─── Trip List ───────────────────────────────────────────
@@ -223,22 +371,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             else if (_trips.isEmpty)
               _buildEmptyTrips(isDark)
             else
-              ..._trips.map((trip) => _AdminTripCard(
+              ..._trips.map((trip) => _AdminCollectionCard(
                     trip: trip,
                     isDark: isDark,
                     exporting: _exportingTripId == trip.tripId,
-                    onTap: () {
+                    onExportCsv: () => _exportTripCsv(trip.tripId),
+                    onDelete: () => _confirmDeleteCollection(trip),
+                    onViewData: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) =>
-                              CoachingReportScreen(tripId: trip.tripId),
+                          builder: (_) => DataViewerScreen(
+                            tripId: trip.tripId,
+                            title:
+                                '${trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername} — ${trip.startTime.day}/${trip.startTime.month}/${trip.startTime.year}',
+                          ),
                         ),
                       );
                     },
-                    onExportCsv: () => _exportTripCsv(trip.tripId),
-                    onDelete: () => _confirmDelete(trip),
                   )),
           ],
+        ),
         ),
       ),
     );
@@ -251,7 +403,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         child: Column(
           children: [
             Icon(
-              Icons.directions_bus_outlined,
+              Icons.dataset_outlined,
               size: 56,
               color: isDark
                   ? AppColors.textOnDarkSecondary
@@ -259,7 +411,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'No trips recorded yet',
+              'No collection trips yet',
               style: TextStyle(
                 fontSize: 16,
                 color: isDark
@@ -273,34 +425,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     );
   }
 
-  Future<void> _confirmDelete(TripSummary trip) async {
-    final tripProvider = context.read<TripProvider>();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Trip?'),
-        content: const Text(
-          'This will permanently delete all trip data including segments and features.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.alert),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await tripProvider.deleteTrip(trip.tripId);
-      if (!mounted) return;
-      _loadTrips();
-    }
-  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -665,6 +790,119 @@ class _TerrainChip extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: color,
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Collection Trip Card
+// ═══════════════════════════════════════════════════════════════════════
+
+class _AdminCollectionCard extends StatelessWidget {
+  final DataCollectionTrip trip;
+  final bool isDark;
+  final bool exporting;
+  final VoidCallback onExportCsv;
+  final VoidCallback onDelete;
+  final VoidCallback onViewData;
+
+  const _AdminCollectionCard({
+    required this.trip,
+    required this.isDark,
+    required this.exporting,
+    required this.onExportCsv,
+    required this.onDelete,
+    required this.onViewData,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dateTimeText =
+        '${trip.startTime.day}/${trip.startTime.month}/${trip.startTime.year} ${trip.startTime.hour.toString().padLeft(2, '0')}:${trip.startTime.minute.toString().padLeft(2, '0')}';
+    final duration = trip.endTime?.difference(trip.startTime) ?? Duration.zero;
+    final durationText = '${duration.inMinutes}m ${duration.inSeconds.remainder(60)}s';
+    final driverText = trip.driverUsername.isEmpty ? 'driver' : trip.driverUsername;
+    final busText = trip.busNumber.isEmpty ? 'No bus' : trip.busNumber;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  '$driverText • $busText',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: onDelete,
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.alert.withOpacity(0.8),
+                ),
+                tooltip: 'Delete collection trip',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$dateTimeText • ${trip.totalSegments} segments',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? AppColors.textOnDarkSecondary : AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Segment distance: ${trip.segmentDistanceM.toStringAsFixed(0)}m • Duration: $durationText',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? AppColors.textOnDarkSecondary : AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              TextButton.icon(
+                onPressed: onViewData,
+                icon: const Icon(Icons.table_chart_rounded, size: 16),
+                label: const Text('View Data'),
+              ),
+              TextButton.icon(
+                onPressed: exporting ? null : onExportCsv,
+                icon: exporting
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_rounded, size: 16),
+                label: const Text('Export CSV'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

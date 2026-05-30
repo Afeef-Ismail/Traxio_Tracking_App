@@ -104,7 +104,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     final l10n = AppLocalizations.of(context)!;
     final auth = context.watch<AuthProvider>();
     final currentUser = auth.currentUser;
-    final displayName = currentUser?['username'] as String? ?? 'Driver';
+    final displayName = currentUser?['full_name'] as String? ?? currentUser?['username'] as String? ?? 'Driver';
     final vehicleType = currentUser?['vehicle_type'] as String? ?? '';
 
     return Scaffold(

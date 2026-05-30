@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../models/trip_model.dart';
 import '../../providers/trip_provider.dart';
 import '../../services/csv_export_service.dart';
+import '../../services/firebase_sync_service.dart';
 import '../theme/app_colors.dart';
 import 'data_viewer_screen.dart';
 
@@ -28,12 +29,48 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
   }
 
   Future<void> _loadTrips() async {
-    final trips = await context.read<TripProvider>().getAllDataCollectionTrips();
-    if (!mounted) return;
-    setState(() {
-      _trips = trips;
-      _loading = false;
-    });
+    try {
+      // Firestore-authoritative read with local reconciliation: if a trip
+      // exists locally but was deleted from Firestore, it is re-synced (or
+      // queued) rather than shown as a stale local-only entry.
+      final trips = await context
+          .read<TripProvider>()
+          .getAllDataCollectionTripsReconciled();
+      if (!mounted) return;
+      setState(() {
+        _trips = trips;
+        _loading = false;
+      });
+    } catch (e) {
+      // Fallback to local database when Firestore is not available
+      try {
+        final localTrips = await context.read<TripProvider>().getAllDataCollectionTrips();
+        if (!mounted) return;
+        setState(() {
+          _trips = localTrips;
+          _loading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Showing collection trips from local database'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } catch (e2) {
+        if (!mounted) return;
+        setState(() {
+          _trips = [];
+          _loading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading collection trips: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   String _formatDuration(DataCollectionTrip trip) {
@@ -104,15 +141,34 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
       ),
     );
     if (confirmed == true) {
-      await context.read<TripProvider>().deleteTrip(trip.tripId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Trip deleted'),
+          content: Text('Deleting trip...'),
           behavior: SnackBarBehavior.floating,
         ),
       );
-      _loadTrips();
+
+      final success = await FirebaseSyncService.instance
+          .deletePublishedCollectionTrip(trip.tripId);
+
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Trip deleted successfully'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _loadTrips(); // Reload the trip list
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to delete trip'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -179,18 +235,27 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
                     ),
                   ),
                   Expanded(
-                    child: _trips.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No data collection trips found',
-                              style: TextStyle(
-                                color: isDark
-                                    ? AppColors.textOnDarkSecondary
-                                    : AppColors.textSecondary,
+                    child: RefreshIndicator(
+                      onRefresh: _loadTrips,
+                      child: _trips.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              const SizedBox(height: 120),
+                              Center(
+                                child: Text(
+                                  'No data collection trips found',
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? AppColors.textOnDarkSecondary
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           )
                         : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
                             itemCount: _trips.length,
                             itemBuilder: (context, index) {
                               final trip = _trips[index];
@@ -288,6 +353,7 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
                               );
                             },
                           ),
+                    ),
                   ),
                 ],
               ),

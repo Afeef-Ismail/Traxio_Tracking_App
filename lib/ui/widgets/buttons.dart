@@ -52,11 +52,18 @@ class PrimaryButton extends StatelessWidget {
                     Icon(icon, size: 22),
                     const SizedBox(width: 10),
                   ],
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 2,
+                      softWrap: true,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.visible,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        height: 1.05,
+                      ),
                     ),
                   ),
                 ],
@@ -106,12 +113,19 @@ class SecondaryButton extends StatelessWidget {
               Icon(icon, size: 22, color: btnColor),
               const SizedBox(width: 10),
             ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: btnColor,
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                softWrap: true,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.visible,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: btnColor,
+                  height: 1.05,
+                ),
               ),
             ),
           ],

@@ -40,7 +40,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     if (user == null) return;
 
     final userId = user['id'] as int;
-    _driverName = user['username'] as String? ?? 'Driver';
+    _driverName = user['full_name'] as String? ?? user['username'] as String? ?? 'Driver';
     _busNumber = user['bus_number'] as String? ?? '';
 
     final trips = await _db.getTripSummariesForUser(userId);

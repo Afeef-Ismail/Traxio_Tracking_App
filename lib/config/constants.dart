@@ -6,7 +6,7 @@ class AppConstants {
   // ─── Demo Mode ─────────────────────────────────────────────────────
   /// Set to true to use simulated sensor data (for emulator/desktop testing).
   /// Set to false for real device with hardware sensors.
-  static const bool demoMode = true;
+  static const bool demoMode = false;
 
   // ─── Sensor Configuration ───────────────────────────────────────────
   /// Target sampling rate in Hz
@@ -72,7 +72,7 @@ class AppConstants {
 
   // ─── Database ──────────────────────────────────────────────────────
   static const String dbName = 'ksrtc_benchmarking.db';
-  static const int dbVersion = 10;
+  static const int dbVersion = 13;
 
   // ─── AI Coaching ───────────────────────────────────────────────────
   static const double maxExpectedDeviation = 50.0;

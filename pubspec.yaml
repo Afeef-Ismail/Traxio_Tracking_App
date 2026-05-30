@@ -59,10 +59,19 @@ dependencies:
   # HTTP
   http: ^1.2.1
 
+  # Firebase
+  firebase_core: ^2.0.0
+  firebase_auth: ^4.0.0
+  cloud_firestore: ^4.0.0
+  connectivity_plus: ^4.0.0
+
   # File sharing / opening
   share_plus: ^10.0.2
   open_file: ^3.3.2
   wakelock_plus: ^1.1.5
+
+  # ZIP archiving
+  archive: ^3.4.0
 
   # Environment variables
   flutter_dotenv: ^5.1.0

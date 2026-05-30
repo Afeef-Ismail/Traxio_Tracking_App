@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "730641614937",
+    "project_id": "traxio-app-13c13",
+    "storage_bucket": "traxio-app-13c13.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:730641614937:android:7a68a8c9b0be09786f0948",
+        "android_client_info": {
+          "package_name": "com.example.traxio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAt9GdTP0lvbWIbRzC98fZd8Ry2Ug9Q35g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -138,7 +138,8 @@ class DbHelper {
         user_id INTEGER NOT NULL DEFAULT 0,
         coaching_report TEXT NOT NULL DEFAULT '',
         score REAL NOT NULL DEFAULT -1,
-        vehicle_type TEXT NOT NULL DEFAULT ''
+        vehicle_type TEXT NOT NULL DEFAULT '',
+        sync_status TEXT NOT NULL DEFAULT 'pending'
       )
     ''');
 
@@ -162,6 +163,9 @@ class DbHelper {
 
     // ─── Seed default clusters ─────────────────────────────────────
     await _seedDefaultClusters(db);
+
+    // ─── sync_queue ─────────────────────────────────────────────────
+    await _createSyncQueueTable(db);
   }
 
   /// Upgrade handler for existing installations.
@@ -228,6 +232,94 @@ class DbHelper {
       await db.execute(
           "ALTER TABLE data_collection_trips ADD COLUMN vehicle_type TEXT NOT NULL DEFAULT ''");
     }
+    if (oldVersion < 11) {
+      // Create sync_queue table for offline sync retry logic
+      await _createSyncQueueTable(db);
+    }
+    if (oldVersion < 12) {
+      await db.execute(
+          "ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''");
+      await db.execute(
+          "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+      await db.execute(
+          "ALTER TABLE users ADD COLUMN firebase_uid TEXT NOT NULL DEFAULT ''");
+    }
+    if (oldVersion < 13) {
+      await db.execute(
+        "ALTER TABLE trip_summaries ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending'");
+      await db.execute(
+        "ALTER TABLE data_collection_trips ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending'");
+    }
+  }
+
+  /// Create the sync_queue table for storing failed syncs.
+  Future<void> _createSyncQueueTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id TEXT NOT NULL,
+        trip_type TEXT NOT NULL CHECK(trip_type IN ('benchmark', 'collection')),
+        created_at INTEGER NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        UNIQUE(trip_id, trip_type)
+      )
+    ''');
+  }
+
+  /// Insert a trip into the sync queue for retry.
+  Future<void> addToSyncQueue(
+      String tripId, String tripType, String? lastError) async {
+    final db = await database;
+    await db.insert(
+      'sync_queue',
+      {
+        'trip_id': tripId,
+        'trip_type': tripType,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'attempts': 0,
+        'last_error': lastError,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  /// Get all queued syncs.
+  Future<List<Map<String, dynamic>>> getSyncQueue() async {
+    final db = await database;
+    return await db.query(
+      'sync_queue',
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  /// Increment attempt count for a queued sync.
+  Future<void> incrementSyncAttempts(String tripId, String tripType) async {
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE sync_queue SET attempts = attempts + 1 WHERE trip_id = ? AND trip_type = ?',
+      [tripId, tripType],
+    );
+  }
+
+  /// Remove a trip from the sync queue.
+  Future<void> removeFromSyncQueue(String tripId, String tripType) async {
+    final db = await database;
+    await db.delete(
+      'sync_queue',
+      where: 'trip_id = ? AND trip_type = ?',
+      whereArgs: [tripId, tripType],
+    );
+  }
+
+  /// Update the error message for a queued sync.
+  Future<void> updateSyncQueueError(
+      String tripId, String tripType, String errorMessage) async {
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE sync_queue SET last_error = ?, attempts = attempts + 1 WHERE trip_id = ? AND trip_type = ?',
+      [errorMessage, tripId, tripType],
+    );
   }
 
   /// Create the users table.
@@ -236,7 +328,10 @@ class DbHelper {
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
+        full_name TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
         password_hash TEXT NOT NULL,
+        firebase_uid TEXT NOT NULL DEFAULT '',
         role TEXT NOT NULL CHECK(role IN ('admin', 'driver')),
         created_at INTEGER NOT NULL,
         bus_number TEXT NOT NULL DEFAULT '',
@@ -478,14 +573,20 @@ class DbHelper {
     if (existingUsers.isEmpty) {
       await db.insert('users', {
         'username': 'admin',
+        'full_name': 'Admin',
+        'email': 'admin@traxio.local',
         'password_hash': hashPassword('admin123'),
+        'firebase_uid': '',
         'role': 'admin',
         'created_at': now,
         'bus_number': '',
       });
       await db.insert('users', {
         'username': 'driver',
+        'full_name': 'Driver',
+        'email': 'driver@traxio.local',
         'password_hash': hashPassword('driver123'),
+        'firebase_uid': '',
         'role': 'driver',
         'created_at': now,
         'bus_number': 'KL-11-A-1234',
@@ -717,9 +818,11 @@ class DbHelper {
   /// Save trip summary.
   Future<void> saveTripSummary(TripSummary summary) async {
     final db = await database;
+    final tripMap = summary.toMap();
+    tripMap['sync_status'] = 'pending';
     await db.insert(
       'trip_summaries',
-      summary.toMap(),
+      tripMap,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -850,6 +953,10 @@ class DbHelper {
         'total_segments': 0,
         'notes': '',
         'created_at': DateTime.now().toIso8601String(),
+        // 'in_progress' — keeps the row out of the retry-sync queue while
+        // the sensor write path is still appending raw_data / segments.
+        // stopCollectionTrip flips it to 'pending' once the trip is closed.
+        'sync_status': 'in_progress',
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -866,10 +973,83 @@ class DbHelper {
       {
         'end_time': endTime,
         'total_segments': totalSegments,
+        // Trip is now finalised — eligible for sync retry.
+        'sync_status': 'pending',
       },
       where: 'trip_id = ?',
       whereArgs: [tripId],
     );
+  }
+
+  Future<void> setDataCollectionTripSyncStatus(
+    String tripId,
+    String syncStatus,
+  ) async {
+    final db = await database;
+    await db.update(
+      'data_collection_trips',
+      {'sync_status': syncStatus},
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+  }
+
+  Future<void> setTripSummarySyncStatus(
+    String tripId,
+    String syncStatus,
+  ) async {
+    final db = await database;
+    await db.update(
+      'trip_summaries',
+      {'sync_status': syncStatus},
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getUnsyncedTripSummaries() async {
+    final db = await database;
+    return db.query(
+      'trip_summaries',
+      where: "sync_status NOT IN ('synced', 'in_progress')",
+      orderBy: 'start_time DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getUnsyncedDataCollectionTrips() async {
+    final db = await database;
+    return db.query(
+      'data_collection_trips',
+      where: "sync_status NOT IN ('synced', 'in_progress')",
+      orderBy: 'start_time DESC',
+    );
+  }
+
+  Future<void> deleteDataCollectionTrip(String tripId) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('data_collection_trips',
+          where: 'trip_id = ?', whereArgs: [tripId]);
+      await txn.delete('segments',
+          where: 'trip_id = ?', whereArgs: [tripId]);
+      await txn.delete('raw_data',
+          where: 'trip_id = ?', whereArgs: [tripId]);
+    });
+  }
+
+  Future<void> deleteTripSummary(String tripId) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('segment_scores',
+        where: 'segment_id IN (SELECT id FROM segments WHERE trip_id = ?) ',
+        whereArgs: [tripId]);
+      await txn.delete('trip_summaries',
+          where: 'trip_id = ?', whereArgs: [tripId]);
+      await txn.delete('segments',
+          where: 'trip_id = ?', whereArgs: [tripId]);
+      await txn.delete('raw_data',
+          where: 'trip_id = ?', whereArgs: [tripId]);
+    });
   }
 
   Future<List<DataCollectionTrip>> getDataCollectionTripsForUser(int userId) async {
@@ -909,11 +1089,17 @@ class DbHelper {
 
   Future<Map<String, dynamic>?> getDataCollectionTripById(String tripId) async {
     final db = await database;
-    final maps = await db.query(
-      'data_collection_trips',
-      where: 'trip_id = ?',
-      whereArgs: [tripId],
-    );
+    // Join users so callers (e.g. CSV export) get the driver's username and
+    // bus_number, not just the columns on data_collection_trips. A plain
+    // query of data_collection_trips has no username/bus_number, which left
+    // the CSV's driver/vehicle fields blank.
+    final maps = await db.rawQuery('''
+      SELECT t.*, u.username, u.bus_number
+      FROM data_collection_trips t
+      LEFT JOIN users u ON t.driver_id = u.id
+      WHERE t.trip_id = ?
+      LIMIT 1
+    ''', [tripId]);
     if (maps.isEmpty) return null;
     return maps.first;
   }
@@ -1002,6 +1188,31 @@ class DbHelper {
     }
 
     return result;
+  }
+
+  /// Returns a map of segment_id → { feature_name: value } for every segment
+  /// in a trip. Used by the Firestore segment serializer so cloud segment
+  /// docs carry the full 120-feature set (mirroring the CSV export), not just
+  /// the segment summary fields.
+  Future<Map<int, Map<String, double>>> getFeaturesBySegmentForTrip(
+    String tripId,
+  ) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT f.segment_id AS segment_id, f.feature_name AS feature_name, f.value AS value
+      FROM features f
+      INNER JOIN segments s ON s.id = f.segment_id
+      WHERE s.trip_id = ?
+    ''', [tripId]);
+
+    final map = <int, Map<String, double>>{};
+    for (final row in rows) {
+      final segmentId = row['segment_id'] as int;
+      final featureMap = map.putIfAbsent(segmentId, () => <String, double>{});
+      featureMap[row['feature_name'] as String] =
+          (row['value'] as num).toDouble();
+    }
+    return map;
   }
 
   Future<Map<int, Map<String, dynamic>>> getSegmentScoresMapForTrip(
@@ -1225,21 +1436,75 @@ class DbHelper {
     return maps.first;
   }
 
+  /// Get a user by username using case-insensitive match.
+  Future<Map<String, dynamic>?> getUserByUsernameInsensitive(
+      String username) async {
+    final db = await database;
+    final maps = await db.query(
+      'users',
+      where: 'LOWER(username) = LOWER(?)',
+      whereArgs: [username],
+    );
+    if (maps.isEmpty) return null;
+    return maps.first;
+  }
+
+  /// Get a user by email. Returns null if not found.
+  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+    final db = await database;
+    final maps = await db.query(
+      'users',
+      where: 'email = ?',
+      whereArgs: [email],
+    );
+    if (maps.isEmpty) return null;
+    return maps.first;
+  }
+
+  /// Get a user by Firebase UID. Returns null if not found.
+  Future<Map<String, dynamic>?> getUserByFirebaseUid(String firebaseUid) async {
+    final db = await database;
+    final maps = await db.query(
+      'users',
+      where: 'firebase_uid = ?',
+      whereArgs: [firebaseUid],
+    );
+    if (maps.isEmpty) return null;
+    return maps.first;
+  }
+
   /// Create a new user. Returns the inserted row ID.
   Future<int> createUser(String username, String passwordHash, String role,
-      {String busNumber = '',
+      {String fullName = '',
+      String email = '',
+      String firebaseUid = '',
+      String busNumber = '',
       String vehicleType = '',
       String vehicleNumber = ''}) async {
     final db = await database;
     return await db.insert('users', {
       'username': username,
+      'full_name': fullName,
+      'email': email,
       'password_hash': passwordHash,
+      'firebase_uid': firebaseUid,
       'role': role,
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'bus_number': busNumber,
       'vehicle_type': vehicleType,
       'vehicle_number': vehicleNumber,
     });
+  }
+
+  /// Update the Firebase UID for an existing user row.
+  Future<int> updateUserFirebaseUid(int userId, String firebaseUid) async {
+    final db = await database;
+    return await db.update(
+      'users',
+      {'firebase_uid': firebaseUid},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
   }
 
   /// Update the bus number for a user.

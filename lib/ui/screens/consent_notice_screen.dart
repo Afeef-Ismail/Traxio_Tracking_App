@@ -100,18 +100,19 @@ class _ConsentNoticeScreenState extends State<ConsentNoticeScreen> {
                     ),
                     const SizedBox(height: 8),
                     _BulletPoint(
-                      text: l10n?.dataStoredDevice ??
-                          'All data is stored on your device only',
+                      text: 'Data is stored locally on your device for real-time recording',
                       isDark: isDark,
                     ),
                     _BulletPoint(
-                      text: l10n?.noAutomaticShare ??
-                          'Data is never automatically shared or uploaded',
+                      text: 'Trip data is automatically synced to a secure cloud database after trip completion',
                       isDark: isDark,
                     ),
                     _BulletPoint(
-                      text: l10n?.youDecideShare ??
-                          'You decide when and what to share by exporting and sending',
+                      text: 'Authorized administrators can view all trip data to monitor driving patterns and road safety',
+                      isDark: isDark,
+                    ),
+                    _BulletPoint(
+                      text: 'You can also manually export your trips as CSV files anytime',
                       isDark: isDark,
                     ),
                     const SizedBox(height: 16),

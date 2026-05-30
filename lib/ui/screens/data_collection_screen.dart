@@ -101,6 +101,21 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     }
   }
 
+  Future<void> _openCalibration() async {
+    if (_starting) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const CalibrationScreen(),
+      ),
+    );
+
+    if (!mounted) return;
+    await _loadCalibrationStatus();
+  }
+
+  
+
   void _startPositionStream() {
     try {
       _positionStreamSubscription?.cancel();
@@ -123,14 +138,21 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
   Future<void> _loadInitialData() async {
     final auth = context.read<AuthProvider>();
-    final tripProvider = context.read<TripProvider>();
     final userId = auth.currentUser?['id'] as int? ?? 0;
     final username = auth.currentUser?['username'] as String? ?? '';
 
+    // Load local-only data for the idle screen. The previous implementation
+    // delegated to TripProvider.getDataCollectionTripsForUser, which calls
+    // Firestore first for signed-in users; on a slow/dropped connection the
+    // Firestore .get() future can hang indefinitely, leaving _loading=true
+    // and the screen stuck on a CircularProgressIndicator.
+    // The "recent 5 trips" strip only ever shows local trips authored on
+    // this device, so query the DB directly. Background retry-sync still
+    // pushes them to Firestore.
     final configured = await _db.getConfig('collection_segment_distance_m');
     final parsed = double.tryParse(configured ?? '100.0') ?? 100.0;
 
-    final trips = await tripProvider.getDataCollectionTripsForUser(userId);
+    final trips = await _db.getDataCollectionTripsForUser(userId);
     String vehicleType = '';
     if (username.isNotEmpty) {
       final user = await _db.getUserByUsername(username);
@@ -169,26 +191,17 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   Future<void> _startCollection() async {
     if (!_isCalibrated) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Please calibrate first for accurate data. Tap the sensor button at the bottom left.',
-          ),
-          duration: const Duration(seconds: 6),
-          action: SnackBarAction(
-            label: 'Calibrate',
-            onPressed: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const CalibrationScreen(),
-                ),
-              );
-              await _loadCalibrationStatus();
-            },
-          ),
+      // Auto-calibrate before starting
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const CalibrationScreen(),
         ),
       );
-      return;
+      await _loadCalibrationStatus();
+      if (!_isCalibrated) {
+        // User cancelled calibration
+        return;
+      }
     }
 
     final serviceEnabled = await _ensureLocationServiceEnabledForCollectionStart();
@@ -520,12 +533,44 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        PrimaryButton(
-          label: l10n.startCollection,
-          icon: Icons.play_arrow_rounded,
-          color: AppColors.success,
-          loading: _starting,
-          onPressed: _starting ? null : _startCollection,
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _starting ? null : _openCalibration,
+                icon: Icon(
+                  _isCalibrated
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.tune_rounded,
+                ),
+                label: Text(
+                  _isCalibrated ? 'Calibration Done' : 'Tap to Calibrate',
+                  textAlign: TextAlign.center,
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  side: BorderSide(
+                    color: _isCalibrated ? AppColors.success : AppColors.warning,
+                  ),
+                  foregroundColor:
+                      _isCalibrated ? AppColors.success : AppColors.warning,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: PrimaryButton(
+                label: 'Start Data\nCollection',
+                icon: Icons.play_arrow_rounded,
+                color: AppColors.success,
+                loading: _starting,
+                onPressed: _starting ? null : _startCollection,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 22),
         Text(

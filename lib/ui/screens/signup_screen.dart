@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
-import '../../database/db_helper.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 
 /// Signup Screen — Self-registration for new drivers.
 ///
-/// Collects: Full name, username, password, confirm password, age checkbox,
+/// Collects: Full name, username, email, password, confirm password, age checkbox,
 /// vehicle type (optional), vehicle number (optional).
-/// On success: Creates user in DB, shows success message, navigates to login.
+/// On success: Creates user in Firebase Auth + Firestore + local cache,
+/// shows success message, navigates to login.
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
@@ -19,6 +21,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _usernameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _vehicleNumberController = TextEditingController();
@@ -43,6 +46,7 @@ class _SignupScreenState extends State<SignupScreen> {
   void dispose() {
     _fullNameController.dispose();
     _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _vehicleNumberController.dispose();
@@ -66,32 +70,30 @@ class _SignupScreenState extends State<SignupScreen> {
       _errorMessage = null;
     });
 
-    final db = DbHelper();
-
-    // Check if username already exists
-    final existingUser = await db.getUserByUsername(_usernameController.text.trim());
-    if (existingUser != null) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = Localizations.of<AppLocalizations>(context, AppLocalizations)
-              ?.usernameAlreadyExists ??
-              'Username already exists. Please choose a different one.';
-        });
-      }
-      return;
-    }
-
-    // Create user
-    final passwordHash = DbHelper.hashPassword(_passwordController.text);
     try {
-      await db.createUser(
-        _usernameController.text.trim(),
-        passwordHash,
-        'driver',
+      final authProvider = context.read<AuthProvider>();
+      final success = await authProvider.register(
+        fullName: _fullNameController.text.trim(),
+        username: _usernameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        role: 'driver',
         vehicleType: _selectedVehicleType,
         vehicleNumber: _vehicleNumberController.text.trim(),
       );
+
+      if (!success) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = authProvider.lastAuthError ??
+                (Localizations.of<AppLocalizations>(context, AppLocalizations)
+                        ?.signupFailed ??
+                    'Signup failed. Please try again.');
+          });
+        }
+        return;
+      }
 
       if (mounted) {
         // Show success snackbar
@@ -114,9 +116,7 @@ class _SignupScreenState extends State<SignupScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = Localizations.of<AppLocalizations>(context, AppLocalizations)
-              ?.signupFailed ??
-              'Signup failed. Please try again.';
+          _errorMessage = 'Signup failed: $e';
         });
       }
     }
@@ -141,6 +141,18 @@ class _SignupScreenState extends State<SignupScreen> {
     return null;
   }
 
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Email is required';
+    }
+    final email = value.trim();
+    final pattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    if (!pattern.hasMatch(email)) {
+      return 'Enter a valid email address';
+    }
+    return null;
+  }
+
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) {
       return Localizations.of<AppLocalizations>(context, AppLocalizations)
@@ -151,6 +163,9 @@ class _SignupScreenState extends State<SignupScreen> {
       return Localizations.of<AppLocalizations>(context, AppLocalizations)
           ?.passwordMinLength ??
           'Password must be at least 6 characters';
+    }
+    if (!AuthProvider.isStrongPassword(value)) {
+      return 'Password must include uppercase, lowercase, number, and special character.';
     }
     return null;
   }
@@ -245,6 +260,49 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // ─── Email ──────────────────────────────────────────
+                Text(
+                  'Email',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _emailController,
+                  textInputAction: TextInputAction.next,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    hintText: 'Enter email address',
+                    prefixIcon: const Icon(Icons.alternate_email_rounded),
+                    filled: true,
+                    fillColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: AppColors.primary,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  validator: _validateEmail,
+                ),
+                const SizedBox(height: 20),
+
                 // ─── Username ────────────────────────────────────────
                 Text(
                   l10n?.username ?? 'Username',
@@ -302,7 +360,9 @@ class _SignupScreenState extends State<SignupScreen> {
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    hintText: l10n?.enterPassword ?? 'Enter password (6+ characters)',
+                    errorMaxLines: 3,
+                    hintText: l10n?.enterPassword ??
+                        'Min 6 chars, with upper, lower, number, and special character',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -521,24 +581,45 @@ class _SignupScreenState extends State<SignupScreen> {
                 if (_errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: AppColors.alert,
-                          size: 18,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.alert.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.alert.withOpacity(0.25),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _errorMessage!,
-                            style: const TextStyle(
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Icon(
+                              Icons.error_outline,
                               color: AppColors.alert,
-                              fontSize: 14,
+                              size: 18,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              softWrap: true,
+                              overflow: TextOverflow.clip,
+                              style: const TextStyle(
+                                color: AppColors.alert,
+                                fontSize: 14,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 

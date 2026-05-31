@@ -146,13 +146,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Username / Email
+                      // Email
                       TextFormField(
                         controller: _usernameController,
                         textInputAction: TextInputAction.next,
+                        keyboardType: TextInputType.emailAddress,
                         decoration: InputDecoration(
-                          labelText: 'Username or Email',
-                          prefixIcon: const Icon(Icons.person_outline),
+                          labelText: 'Email',
+                          prefixIcon: const Icon(Icons.alternate_email_rounded),
                           filled: true,
                           fillColor: isDark
                               ? AppColors.darkCard
@@ -183,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Username or Email';
+                            return 'Email is required';
                           }
                           return null;
                         },

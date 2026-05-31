@@ -487,10 +487,24 @@ class FirebaseSyncService {
     try {
       final tripRef = _firestore.collection('benchmarkTrips').doc(tripId);
 
+      // Resolve the owner before deleting the public doc so we can clean up the
+      // user-scoped tree at users/{uid}/trips/{tripId} (+ segments/ scores/).
+      final ownerUid = await _resolveOwnerUid('benchmarkTrips', tripId);
+
       // Delete subcollections in batches of 500 before removing the parent doc.
       await _deleteCollectionInBatches(tripRef.collection('segments'));
       await _deleteCollectionInBatches(tripRef.collection('scores'));
 
+      // Delete the user-scoped trip tree (the per-user mirror at
+      // users/{uid}/trips/{tripId} with its segments/ and scores/).
+      try {
+        await _deleteUserTripTree(ownerUid, tripId);
+      } catch (e) {
+        print('Warning: Failed to delete user-scoped trips tree: $e');
+      }
+
+      // Sweep any other user mirrors that match this tripId, deleting each
+      // matched doc's subcollections too (a plain doc delete leaves them).
       final mirrorSnapshot = await _firestore.collectionGroup('trips').get();
       for (final doc in mirrorSnapshot.docs) {
         final data = doc.data();
@@ -499,6 +513,12 @@ class FirebaseSyncService {
             ? (summary['tripId'] ?? summary['trip_id'])?.toString()
             : (data['tripId'] ?? data['trip_id'])?.toString();
         if (mirrorTripId == tripId) {
+          try {
+            await _deleteCollectionInBatches(doc.reference.collection('segments'));
+            await _deleteCollectionInBatches(doc.reference.collection('scores'));
+          } catch (e) {
+            print('Warning: Failed to delete mirror subcollections: $e');
+          }
           await doc.reference.delete();
         }
       }
@@ -537,6 +557,10 @@ class FirebaseSyncService {
     try {
       final tripRef = _firestore.collection('collectionTrips').doc(tripId);
 
+      // Resolve the owner before deleting the public doc (we need its
+      // ownerUid field to locate the user-scoped mirror tree).
+      final ownerUid = await _resolveOwnerUid('collectionTrips', tripId);
+
       // Step 1: Delete subcollection rows in batches of 500.
       try {
         await _deleteCollectionInBatches(tripRef.collection('rows'));
@@ -545,7 +569,16 @@ class FirebaseSyncService {
         // Continue anyway - try to delete the trip itself
       }
 
-      // Step 2: Try to delete user-scoped mirrors (not critical if it fails)
+      // Step 2: Delete the user-scoped trip tree. Collection sync writes
+      // segments to users/{uid}/trips/{tripId}/segments (via _writeUserSegments)
+      // AND a doc at users/{uid}/collectionTrips/{tripId}. Both must go.
+      try {
+        await _deleteUserTripTree(ownerUid, tripId);
+      } catch (e) {
+        print('Warning: Failed to delete user-scoped trips tree: $e');
+      }
+
+      // Step 3: Try to delete user-scoped collectionTrips mirrors.
       try {
         final mirrorSnapshot = await _firestore.collectionGroup('collectionTrips').get();
         final mirrorBatch = _firestore.batch();
@@ -566,10 +599,10 @@ class FirebaseSyncService {
         // Continue - mirrors will eventually be cleaned up or orphaned
       }
 
-      // Step 3: Delete the main public collection trip doc
+      // Step 4: Delete the main public collection trip doc
       await tripRef.delete();
       
-      // Step 4: Clean up local database
+      // Step 5: Clean up local database
       await _db.deleteDataCollectionTrip(tripId);
       
       return true;
@@ -597,6 +630,40 @@ class FirebaseSyncService {
       } catch (_) {}
       return false;
     }
+  }
+
+  /// Deletes a user-scoped trip document and all of its subcollections.
+  /// Collection trips write segments to users/{uid}/trips/{tripId}/segments via
+  /// _writeUserSegments, and benchmark trips additionally write a summary doc
+  /// there plus segments/ and scores/. Deleting the parent doc does NOT remove
+  /// its subcollections in Firestore, so they must be deleted explicitly.
+  Future<void> _deleteUserTripTree(String ownerUid, String tripId) async {
+    if (ownerUid.isEmpty || tripId.isEmpty) return;
+    final tripDocRef = _firestore
+        .collection('users')
+        .doc(ownerUid)
+        .collection('trips')
+        .doc(tripId);
+    await _deleteCollectionInBatches(tripDocRef.collection('segments'));
+    await _deleteCollectionInBatches(tripDocRef.collection('scores'));
+    await tripDocRef.delete();
+  }
+
+  /// Resolves the ownerUid stamped on a public trip doc (benchmarkTrips or
+  /// collectionTrips). Returns the current signed-in uid as a fallback so a
+  /// self-owned trip is still cleaned up even if the field is missing.
+  Future<String> _resolveOwnerUid(
+    String collection,
+    String tripId,
+  ) async {
+    try {
+      final doc = await _firestore.collection(collection).doc(tripId).get();
+      final owner = (doc.data()?['ownerUid'] as String?)?.trim() ?? '';
+      if (owner.isNotEmpty) return owner;
+    } catch (_) {
+      // Ignore and fall back to the current user below.
+    }
+    return _auth.currentUser?.uid ?? '';
   }
 
   Future<void> _deleteCollectionInBatches(
@@ -812,6 +879,9 @@ class FirebaseSyncService {
       notes: (map['notes'] as String?) ?? '',
       createdAt: (map['created_at'] as String?) ?? '',
       driverUsername: (map['driverUsername'] as String?) ?? (map['username'] as String?) ?? '',
+      driverName: (map['full_name'] as String?)?.trim().isNotEmpty == true
+          ? (map['full_name'] as String).trim()
+          : ((map['driverName'] as String?) ?? ''),
       busNumber: (map['busNumber'] as String?) ?? (map['bus_number'] as String?) ?? '',
       routeDescription: (map['routeDescription'] as String?) ?? '',
       vehicleType: (map['vehicle_type'] as String?) ?? '',

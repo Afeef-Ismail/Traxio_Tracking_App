@@ -47,6 +47,14 @@ class CsvExportService {
     return cols;
   }
 
+  /// The driver's display name for exports: prefer the user's full name,
+  /// fall back to username if full name is blank.
+  static String _driverDisplayName(Map<String, dynamic>? trip) {
+    final fullName = trip?['full_name']?.toString().trim() ?? '';
+    if (fullName.isNotEmpty) return fullName;
+    return trip?['username']?.toString() ?? '';
+  }
+
   Future<String> exportCollectionTripCSV(String tripId) async {
     final export = await _buildCollectionTripExport(tripId);
     final path = await _getExportPath(export.fileName);
@@ -250,14 +258,14 @@ class CsvExportService {
     required DateTime startTime,
     required List<RawSample> rawSamples,
   }) {
-    final driverUsername = trip?['username']?.toString() ?? '';
+    final driverName = _driverDisplayName(trip);
     final vehicle = (trip?['vehicle_type']?.toString().trim().isNotEmpty ?? false)
         ? trip!['vehicle_type'].toString()
         : (trip?['bus_number']?.toString() ?? '');
     final buffer = StringBuffer();
     buffer.writeln('# Traxio Data Collection Export');
     buffer.writeln('# Trip ID: $tripId');
-    buffer.writeln('# Driver: $driverUsername');
+    buffer.writeln('# Driver: $driverName');
     buffer.writeln('# Vehicle: $vehicle');
     buffer.writeln('# Export Date: ${_dateFmt.format(startTime)}');
     buffer.writeln('# Source: raw samples');
@@ -288,7 +296,7 @@ class CsvExportService {
     required DateTime startTime,
     required List<Map<String, dynamic>> rows,
   }) {
-    final driverUsername = trip?['username']?.toString() ?? '';
+    final driverName = _driverDisplayName(trip);
     // The collection vehicle is stored as vehicle_type on the trip record;
     // fall back to the driver's bus_number if vehicle_type is blank.
     final vehicle = (trip?['vehicle_type']?.toString().trim().isNotEmpty ?? false)
@@ -296,7 +304,7 @@ class CsvExportService {
         : (trip?['bus_number']?.toString() ?? '');
     final headers = <String>[
       'csv_row_number',
-      'driver_username',
+      'driver_name',
       'bus_number',
       'trip_id',
       'segment_index',
@@ -318,7 +326,7 @@ class CsvExportService {
     final buffer = StringBuffer();
     buffer.writeln('# Traxio Data Collection Export');
     buffer.writeln('# Trip ID: $tripId');
-    buffer.writeln('# Driver: $driverUsername');
+    buffer.writeln('# Driver: $driverName');
     buffer.writeln('# Vehicle: $vehicle');
     buffer.writeln('# Export Date: ${_dateFmt.format(startTime)}');
     buffer.writeln('# Source: segmented data');
@@ -329,7 +337,7 @@ class CsvExportService {
       final row = rows[index];
       final values = <String>[
         '${index + 1}',
-        driverUsername,
+        driverName,
         vehicle,
         tripId,
       ];

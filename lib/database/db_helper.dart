@@ -250,6 +250,38 @@ class DbHelper {
       await db.execute(
         "ALTER TABLE data_collection_trips ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending'");
     }
+    if (oldVersion < 14) {
+      // Repair: databases created fresh at v13 ran _createDataCollectionTripsTable,
+      // which was missing the sync_status column (only the <13 ALTER added it,
+      // and that path doesn't run on a fresh create). Add it if absent.
+      await _ensureColumnExists(
+        db,
+        table: 'data_collection_trips',
+        column: 'sync_status',
+        definition: "TEXT NOT NULL DEFAULT 'pending'",
+      );
+      await _ensureColumnExists(
+        db,
+        table: 'trip_summaries',
+        column: 'sync_status',
+        definition: "TEXT NOT NULL DEFAULT 'pending'",
+      );
+    }
+  }
+
+  /// Adds [column] to [table] only if it isn't already present, avoiding the
+  /// "duplicate column name" error on installs that already have it.
+  Future<void> _ensureColumnExists(
+    Database db, {
+    required String table,
+    required String column,
+    required String definition,
+  }) async {
+    final info = await db.rawQuery('PRAGMA table_info($table)');
+    final hasColumn = info.any((row) => row['name'] == column);
+    if (!hasColumn) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+    }
   }
 
   /// Create the sync_queue table for storing failed syncs.
@@ -523,6 +555,7 @@ class DbHelper {
         total_segments INTEGER NOT NULL DEFAULT 0,
         notes TEXT,
         created_at TEXT NOT NULL,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
         FOREIGN KEY (driver_id) REFERENCES users(id)
       )
     ''');
@@ -831,7 +864,9 @@ class DbHelper {
   Future<List<TripSummary>> getTripSummariesForUser(int userId) async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT t.*, u.username AS driver_name, u.bus_number
+      SELECT t.*,
+        COALESCE(NULLIF(u.full_name, ''), u.username) AS driver_name,
+        u.bus_number
       FROM trip_summaries t
       LEFT JOIN users u ON t.user_id = u.id
       WHERE t.user_id = ?
@@ -844,7 +879,9 @@ class DbHelper {
   Future<List<TripSummary>> getAllTripSummaries() async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT t.*, u.username AS driver_name, u.bus_number
+      SELECT t.*,
+        COALESCE(NULLIF(u.full_name, ''), u.username) AS driver_name,
+        u.bus_number
       FROM trip_summaries t
       LEFT JOIN users u ON t.user_id = u.id
       ORDER BY t.start_time DESC
@@ -1055,7 +1092,7 @@ class DbHelper {
   Future<List<DataCollectionTrip>> getDataCollectionTripsForUser(int userId) async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT t.*, u.username, u.bus_number,
+      SELECT t.*, u.username, u.full_name, u.bus_number,
         (SELECT s.nearest_landmark FROM segments s
           WHERE s.trip_id = t.trip_id AND s.mode = 'collection'
           ORDER BY s.segment_index ASC LIMIT 1) AS start_landmark,
@@ -1073,7 +1110,7 @@ class DbHelper {
   Future<List<DataCollectionTrip>> getAllDataCollectionTrips() async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT t.*, u.username, u.bus_number,
+      SELECT t.*, u.username, u.full_name, u.bus_number,
         (SELECT s.nearest_landmark FROM segments s
           WHERE s.trip_id = t.trip_id AND s.mode = 'collection'
           ORDER BY s.segment_index ASC LIMIT 1) AS start_landmark,
@@ -1089,12 +1126,10 @@ class DbHelper {
 
   Future<Map<String, dynamic>?> getDataCollectionTripById(String tripId) async {
     final db = await database;
-    // Join users so callers (e.g. CSV export) get the driver's username and
-    // bus_number, not just the columns on data_collection_trips. A plain
-    // query of data_collection_trips has no username/bus_number, which left
-    // the CSV's driver/vehicle fields blank.
+    // Join users so callers (e.g. CSV export) get the driver's full name,
+    // username and bus_number, not just the columns on data_collection_trips.
     final maps = await db.rawQuery('''
-      SELECT t.*, u.username, u.bus_number
+      SELECT t.*, u.username, u.full_name, u.bus_number
       FROM data_collection_trips t
       LEFT JOIN users u ON t.driver_id = u.id
       WHERE t.trip_id = ?
@@ -1502,6 +1537,17 @@ class DbHelper {
     return await db.update(
       'users',
       {'firebase_uid': firebaseUid},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  /// Update the role ('admin' or 'driver') for an existing user row.
+  Future<int> updateUserRole(int userId, String role) async {
+    final db = await database;
+    return await db.update(
+      'users',
+      {'role': role},
       where: 'id = ?',
       whereArgs: [userId],
     );

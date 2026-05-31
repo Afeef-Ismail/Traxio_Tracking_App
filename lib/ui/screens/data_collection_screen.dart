@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import '../../config/constants.dart';
 import '../../database/db_helper.dart';
 import '../../models/trip_model.dart';
 import '../../providers/auth_provider.dart';
@@ -204,8 +205,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
       }
     }
 
-    final serviceEnabled = await _ensureLocationServiceEnabledForCollectionStart();
-    if (!serviceEnabled || !mounted) return;
+    // Ensure runtime location permission AND that the GPS service is on.
+    final ready = await _ensureLocationReadyForCollectionStart();
+    if (!ready || !mounted) return;
 
     setState(() => _starting = true);
     await context.read<TripProvider>().startCollectionTrip(
@@ -214,39 +216,105 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     );
     if (!mounted) return;
     setState(() => _starting = false);
+
+    // Surface any failure from the provider (e.g. permission/sensor failure)
+    // instead of silently doing nothing.
+    final provider = context.read<TripProvider>();
+    if (provider.state == TripState.error && provider.errorMessage.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.errorMessage),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
-  Future<bool> _ensureLocationServiceEnabledForCollectionStart() async {
+  /// Requests location permission (showing the OS prompt when needed) and
+  /// verifies the GPS service is enabled. Returns true only when both are
+  /// satisfied; otherwise shows an explanatory dialog/snackbar and returns
+  /// false so the caller can abort cleanly.
+  Future<bool> _ensureLocationReadyForCollectionStart() async {
+    // Demo mode uses synthetic GPS, so it doesn't need real permission or the
+    // device GPS toggle. Allow it straight through.
+    if (AppConstants.demoMode) return true;
+
+    // 1. Runtime permission.
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (!mounted) return false;
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) {
+          final l10n = AppLocalizations.of(ctx)!;
+          return AlertDialog(
+            title: Text(l10n.locationServiceDisabled),
+            content: const Text(
+              'Location permission is permanently denied. Please enable it for '
+              'Traxio in app settings to record trips.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('cancel'),
+                child: Text(l10n.cancel),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('open_settings'),
+                child: Text(l10n.openSettings),
+              ),
+            ],
+          );
+        },
+      );
+      if (action == 'open_settings') {
+        await Geolocator.openAppSettings();
+      }
+      return false;
+    }
+
+    if (permission == LocationPermission.denied) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location permission is required to record trips.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return false;
+    }
+
+    // 2. GPS service toggle.
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (serviceEnabled) return true;
 
     if (!mounted) return false;
-
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) {
         final l10n = AppLocalizations.of(ctx)!;
         return AlertDialog(
-        title: Text(l10n.locationServiceDisabled),
-        content: Text(l10n.locationServiceMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('cancel'),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('open_settings'),
-            child: Text(l10n.openSettings),
-          ),
-        ],
-      );
+          title: Text(l10n.locationServiceDisabled),
+          content: Text(l10n.locationServiceMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop('cancel'),
+              child: Text(l10n.cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop('open_settings'),
+              child: Text(l10n.openSettings),
+            ),
+          ],
+        );
       },
     );
-
     if (action == 'open_settings') {
       await Geolocator.openLocationSettings();
     }
-
     return false;
   }
 

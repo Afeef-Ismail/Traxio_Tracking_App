@@ -276,7 +276,7 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      '${trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername} • ${trip.busNumber.isEmpty ? 'No bus' : trip.busNumber}',
+                                      '${trip.driverName.isEmpty ? (trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername) : trip.driverName} • ${trip.vehicleType.isEmpty ? 'No vehicle' : trip.vehicleType}',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w600,
                                         color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
@@ -315,7 +315,7 @@ class _AdminCollectionScreenState extends State<AdminCollectionScreen> {
                                               MaterialPageRoute(
                                                 builder: (_) => DataViewerScreen(
                                                   tripId: trip.tripId,
-                                                  title: '${trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername} — ${dateText}',
+                                                  title: '${trip.driverName.isEmpty ? (trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername) : trip.driverName} — ${dateText}',
                                                 ),
                                               ),
                                             ),

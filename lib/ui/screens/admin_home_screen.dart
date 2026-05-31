@@ -383,7 +383,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                           builder: (_) => DataViewerScreen(
                             tripId: trip.tripId,
                             title:
-                                '${trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername} — ${trip.startTime.day}/${trip.startTime.month}/${trip.startTime.year}',
+                                '${trip.driverName.isEmpty ? (trip.driverUsername.isEmpty ? 'Unknown' : trip.driverUsername) : trip.driverName} — ${trip.startTime.day}/${trip.startTime.month}/${trip.startTime.year}',
                           ),
                         ),
                       );
@@ -822,8 +822,11 @@ class _AdminCollectionCard extends StatelessWidget {
         '${trip.startTime.day}/${trip.startTime.month}/${trip.startTime.year} ${trip.startTime.hour.toString().padLeft(2, '0')}:${trip.startTime.minute.toString().padLeft(2, '0')}';
     final duration = trip.endTime?.difference(trip.startTime) ?? Duration.zero;
     final durationText = '${duration.inMinutes}m ${duration.inSeconds.remainder(60)}s';
-    final driverText = trip.driverUsername.isEmpty ? 'driver' : trip.driverUsername;
-    final busText = trip.busNumber.isEmpty ? 'No bus' : trip.busNumber;
+    final driverText = trip.driverName.isNotEmpty
+        ? trip.driverName
+        : (trip.driverUsername.isEmpty ? 'driver' : trip.driverUsername);
+    final vehicleText =
+        trip.vehicleType.isEmpty ? 'No vehicle' : trip.vehicleType;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -843,7 +846,7 @@ class _AdminCollectionCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '$driverText • $busText',
+                  '$driverText • $vehicleText',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,

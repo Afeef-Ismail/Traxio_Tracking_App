@@ -8,6 +8,25 @@ class AppConstants {
   /// Set to false for real device with hardware sensors.
   static const bool demoMode = false;
 
+  // ─── Admin Bootstrap ───────────────────────────────────────────────
+  /// Email addresses that are always treated as admins, regardless of what
+  /// (if anything) is stored in Firestore. This is the bootstrap source of
+  /// truth so an admin can still sign in and self-seed the admins/{uid}
+  /// Firestore doc even after the cloud data has been cleared.
+  /// Compared case-insensitively.
+  static const List<String> adminEmails = [
+    'admin@traxio.app',
+    'admin@traxio.local',
+  ];
+
+  /// Returns true if [email] is in the admin allowlist (case-insensitive).
+  static bool isAdminEmail(String? email) {
+    if (email == null) return false;
+    final normalized = email.trim().toLowerCase();
+    return adminEmails.contains(normalized);
+  }
+
+
   // ─── Sensor Configuration ───────────────────────────────────────────
   /// Target sampling rate in Hz
   static const int sensorSamplingRateHz = 10;
@@ -72,7 +91,7 @@ class AppConstants {
 
   // ─── Database ──────────────────────────────────────────────────────
   static const String dbName = 'ksrtc_benchmarking.db';
-  static const int dbVersion = 13;
+  static const int dbVersion = 14;
 
   // ─── AI Coaching ───────────────────────────────────────────────────
   static const double maxExpectedDeviation = 50.0;

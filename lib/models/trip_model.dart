@@ -157,6 +157,7 @@ class DataCollectionTrip {
   final String notes;
   final String createdAt;
   final String driverUsername;
+  final String driverName;
   final String busNumber;
   final String routeDescription;
   final String vehicleType;
@@ -173,6 +174,7 @@ class DataCollectionTrip {
     this.notes = '',
     this.createdAt = '',
     this.driverUsername = '',
+    this.driverName = '',
     this.busNumber = '',
     this.routeDescription = '',
     this.vehicleType = '',
@@ -218,6 +220,9 @@ class DataCollectionTrip {
       notes: (map['notes'] as String?) ?? '',
       createdAt: (map['created_at'] as String?) ?? '',
       driverUsername: (map['username'] as String?) ?? '',
+      driverName: ((map['full_name'] as String?)?.trim().isNotEmpty ?? false)
+          ? (map['full_name'] as String).trim()
+          : ((map['driverName'] as String?) ?? (map['username'] as String?) ?? ''),
       busNumber: (map['bus_number'] as String?) ?? '',
       routeDescription: routeDescription,
     );

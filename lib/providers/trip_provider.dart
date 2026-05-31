@@ -686,49 +686,78 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
   ///      re-marked 'pending' and re-uploaded (if it has data worth syncing).
   ///   3. Returns the post-reconcile Firestore view.
   ///
-  /// If Firestore is unreachable (offline), it degrades gracefully to the
-  /// local list without destructive reconciliation.
+  /// If the Firestore read fails for ANY reason (offline, permission-denied,
+  /// null Firebase Auth session, network error), or returns empty while local
+  /// has data, it falls back to the local SQLite list. Local data is never
+  /// wiped from the UI because of a Firestore read failure.
   Future<List<DataCollectionTrip>> getAllDataCollectionTripsReconciled() async {
+    // Always load local first so it's available as a non-destructive fallback
+    // no matter what happens with Firestore.
+    final localTrips = await _db.getAllDataCollectionTrips();
+
     List<DataCollectionTrip> cloudTrips;
     try {
       cloudTrips =
           await FirebaseSyncService.instance.getPublishedCollectionTrips();
     } catch (e) {
-      // Cloud unreachable — show local data, do not reconcile destructively.
-      debugPrint('Reconcile skipped (cloud read failed): $e');
-      return await _db.getAllDataCollectionTrips();
+      // Cloud read FAILED for any reason — offline, permission-denied, null
+      // Firebase Auth session, network error, malformed data, etc. Never wipe
+      // the UI: show the local list.
+      debugPrint(
+          'Reconcile fallback to local: Firestore read threw ($e). '
+          'Showing ${localTrips.length} local trip(s).');
+      return localTrips;
     }
 
-    final localTrips = await _db.getAllDataCollectionTrips();
-    final cloudIds = cloudTrips.map((t) => t.tripId).toSet();
-
-    var resynced = 0;
-    for (final local in localTrips) {
-      if (local.tripId.isEmpty || cloudIds.contains(local.tripId)) {
-        continue;
-      }
-      // Present locally but not in Firestore. Only re-upload trips that
-      // actually carry segment data; 0-segment trips don't belong in cloud.
-      if (local.totalSegments > 0) {
-        await _db.setDataCollectionTripSyncStatus(local.tripId, 'pending');
-        final ok =
-            await FirebaseSyncService.instance.syncCollectionTrip(local.tripId);
-        if (ok) resynced++;
-        debugPrint(
-            'Reconcile: local-only trip ${local.tripId} '
-            '(${local.totalSegments} segments) re-sync ${ok ? 'succeeded' : 'queued/failed'}.');
-      }
+    // A successful-but-empty cloud result while local has data is
+    // indistinguishable from a silent read failure: getPublishedCollectionTrips
+    // swallows some errors internally and returns an empty list (e.g. the
+    // collectionGroup fallback catch, or a permission-restricted read that
+    // yields nothing). Treat "empty cloud + non-empty local" as a suspected
+    // read failure and fall back to local rather than wiping the UI.
+    if (cloudTrips.isEmpty && localTrips.isNotEmpty) {
+      debugPrint(
+          'Reconcile fallback to local: Firestore returned 0 trips but local '
+          'has ${localTrips.length}. Treating empty cloud as a read failure; '
+          'not wiping local data.');
+      return localTrips;
     }
 
-    if (resynced == 0) {
-      return cloudTrips;
-    }
-
-    // Re-read so the UI reflects the freshly re-uploaded trips.
     try {
+      final cloudIds = cloudTrips.map((t) => t.tripId).toSet();
+
+      var resynced = 0;
+      for (final local in localTrips) {
+        if (local.tripId.isEmpty || cloudIds.contains(local.tripId)) {
+          continue;
+        }
+        // Present locally but not in Firestore. Only re-upload trips that
+        // actually carry segment data; 0-segment trips don't belong in cloud.
+        if (local.totalSegments > 0) {
+          await _db.setDataCollectionTripSyncStatus(local.tripId, 'pending');
+          final ok = await FirebaseSyncService.instance
+              .syncCollectionTrip(local.tripId);
+          if (ok) resynced++;
+          debugPrint(
+              'Reconcile: local-only trip ${local.tripId} '
+              '(${local.totalSegments} segments) re-sync ${ok ? 'succeeded' : 'queued/failed'}.');
+        }
+      }
+
+      if (resynced == 0) {
+        return cloudTrips;
+      }
+
+      // Re-read so the UI reflects the freshly re-uploaded trips.
       return await FirebaseSyncService.instance.getPublishedCollectionTrips();
-    } catch (_) {
-      return cloudTrips;
+    } catch (e) {
+      // Any failure during reconcile or the re-read must not wipe the UI.
+      // Prefer the cloud list we already fetched; if it somehow became empty,
+      // fall back to local.
+      debugPrint(
+          'Reconcile fallback after reconcile/re-read failure ($e). '
+          'Returning ${cloudTrips.isNotEmpty ? 'cloud' : 'local'} list.');
+      return cloudTrips.isNotEmpty ? cloudTrips : localTrips;
     }
   }
 

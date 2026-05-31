@@ -20,7 +20,6 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
-  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -45,7 +44,6 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   void dispose() {
     _fullNameController.dispose();
-    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -74,7 +72,6 @@ class _SignupScreenState extends State<SignupScreen> {
       final authProvider = context.read<AuthProvider>();
       final success = await authProvider.register(
         fullName: _fullNameController.text.trim(),
-        username: _usernameController.text.trim(),
         email: _emailController.text.trim(),
         password: _passwordController.text,
         role: 'driver',
@@ -109,8 +106,8 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         );
 
-        // Navigate back to login with username pre-filled
-        Navigator.of(context).pop(_usernameController.text.trim());
+        // Navigate back to login with email pre-filled (login is email-based).
+        Navigator.of(context).pop(_emailController.text.trim());
       }
     } catch (e) {
       if (mounted) {
@@ -120,25 +117,6 @@ class _SignupScreenState extends State<SignupScreen> {
         });
       }
     }
-  }
-
-  String? _validateUsername(String? value) {
-    if (value == null || value.isEmpty) {
-      return Localizations.of<AppLocalizations>(context, AppLocalizations)
-          ?.usernameRequired ??
-          'Username is required';
-    }
-    if (value.length < 4) {
-      return Localizations.of<AppLocalizations>(context, AppLocalizations)
-          ?.usernameMinLength ??
-          'Username must be at least 4 characters';
-    }
-    if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(value)) {
-      return Localizations.of<AppLocalizations>(context, AppLocalizations)
-          ?.usernameAlphanumeric ??
-          'Username must contain only alphanumeric characters (no spaces)';
-    }
-    return null;
   }
 
   String? _validateEmail(String? value) {
@@ -300,48 +278,6 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                   validator: _validateEmail,
-                ),
-                const SizedBox(height: 20),
-
-                // ─── Username ────────────────────────────────────────
-                Text(
-                  l10n?.username ?? 'Username',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _usernameController,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    hintText: l10n?.enterUsername ?? 'Enter username (4+ characters)',
-                    prefixIcon: const Icon(Icons.person_outline),
-                    filled: true,
-                    fillColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: AppColors.primary,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  validator: _validateUsername,
                 ),
                 const SizedBox(height: 20),
 

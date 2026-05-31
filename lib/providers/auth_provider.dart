@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../config/constants.dart';
 import '../database/db_helper.dart';
 import '../services/firebase_sync_service.dart';
 
@@ -59,69 +60,37 @@ class AuthProvider extends ChangeNotifier {
     if (normalizedIdentifier.isEmpty) return false;
 
     final passwordHash = DbHelper.hashPassword(password);
-    final cloudUser = normalizedIdentifier.contains('@')
-        ? await _loadCloudUserProfileByEmail(normalizedIdentifier)
-        : await _loadCloudUserProfileByUsername(normalizedIdentifier);
+    final isEmail = normalizedIdentifier.contains('@');
 
-    if (cloudUser != null) {
-      final emailAddress = (cloudUser['email'] as String?)?.trim() ?? '';
-      if (emailAddress.isEmpty) {
-        _lastAuthError = 'Cloud account is missing an email address.';
-        return false;
-      }
-
-      try {
-        await _signInWithEmail(emailAddress, password);
-        final firebaseUid = _auth.currentUser?.uid;
-        final cloudProfile = await _loadCloudUserProfile(firebaseUid) ?? cloudUser;
-        final usernameValue = (cloudProfile['username'] as String?)?.trim() ??
-            normalizedIdentifier.split('@').first;
-        final existingLocalUser = await _resolveLocalUser(usernameValue) ??
-            await _resolveLocalUser(emailAddress);
-
-        if (existingLocalUser == null) {
-          await _db.createUser(
-            usernameValue,
-            passwordHash,
-            (cloudProfile['role'] as String?) ?? 'driver',
-            fullName: (cloudProfile['full_name'] as String?) ?? '',
-            email: emailAddress,
-            firebaseUid: firebaseUid ?? '',
-            busNumber: (cloudProfile['bus_number'] as String?) ?? '',
-            vehicleType: (cloudProfile['vehicle_type'] as String?) ?? '',
-            vehicleNumber: (cloudProfile['vehicle_number'] as String?) ?? '',
-          );
-        }
-
-        final hydratedLocalUser =
-            await _resolveLocalUser(usernameValue) ?? cloudProfile;
-        _setCurrentUser(hydratedLocalUser ?? {
-          'username': usernameValue,
-          'email': emailAddress,
-          'role': (cloudProfile['role'] as String?) ?? 'driver',
-        });
-        await _seedFirestoreAdminDocIfNeeded(hydratedLocalUser ?? cloudProfile, firebaseUid);
-        await _runZeroSegmentCleanupIfNeeded(hydratedLocalUser ?? cloudProfile);
+    // ── PRIMARY PATH: email → Firebase Auth sign-in ──────────────────────
+    // signInWithEmailAndPassword requires NO Firestore read, so it never hits
+    // the permission deadlock that a pre-auth username→email lookup does.
+    // After a session exists, users/{uid} and admins/{uid} become readable.
+    if (isEmail) {
+      final hydrated = await _signInWithEmailAndHydrate(
+        normalizedIdentifier.toLowerCase(),
+        password,
+        passwordHash,
+      );
+      if (hydrated != null) {
+        _setCurrentUser(hydrated);
+        await _seedFirestoreAdminDocIfNeeded(
+            hydrated, hydrated['firebase_uid'] as String?);
+        await _runZeroSegmentCleanupIfNeeded(hydrated);
         return true;
-      } catch (e) {
-        _lastAuthError = 'Firebase login failed. Please check your credentials.';
-        debugPrint('Firebase sign-in failed for cloud user: $e');
-        return false;
       }
+      // Firebase sign-in failed (offline, or a local-only seeded account whose
+      // email exists only in SQLite, e.g. admin@traxio.local). Fall through to
+      // the local password-hash check below.
     }
 
+    // ── LOCAL PATH: SQLite check (offline, seeded accounts, synced users) ──
     final localUser = await _resolveLocalUser(normalizedIdentifier);
-    if (localUser == null) {
-      _lastAuthError = 'No account found for "$normalizedIdentifier".';
-      return false;
-    }
-
-    if (localUser['password_hash'] == passwordHash) {
+    if (localUser != null && localUser['password_hash'] == passwordHash) {
       _setCurrentUser(localUser);
-      // Silent auto-link: if this user's local SQLite row has no Firebase UID,
-      // create (or sign into) a synthetic-email Firebase Auth account using
-      // the password just supplied, then backfill the UID into SQLite. This
-      // keeps drivers' Firestore syncs working without any UI prompt.
+      // Silent auto-link: if this row has no Firebase UID but its stored email
+      // + password match a real Firebase account, establish the session and
+      // backfill the UID so Firestore sync works.
       final hydratedUser =
           await _autoLinkFirebaseUidIfPossible(localUser, password);
       await _seedFirestoreAdminDocIfNeeded(
@@ -130,9 +99,292 @@ class AuthProvider extends ChangeNotifier {
       return true;
     }
 
-    _lastAuthError = 'Invalid password.';
+    // ── RECOVERY PATH: account in Firebase Auth but no local row ──────────
+    // (e.g. a fresh install wiped the local DB). Tries email/synthetic sign-in
+    // and rebuilds the local row from the Firestore profile.
+    final recovered = await _recoverLocalUserFromFirebase(
+      normalizedIdentifier,
+      password,
+    );
+    if (recovered != null) {
+      _setCurrentUser(recovered);
+      await _seedFirestoreAdminDocIfNeeded(
+          recovered, recovered['firebase_uid'] as String?);
+      await _runZeroSegmentCleanupIfNeeded(recovered);
+      return true;
+    }
 
+    _lastAuthError = localUser != null
+        ? 'Invalid password.'
+        : 'No account found for "$normalizedIdentifier". '
+            'Try your email address.';
     return false;
+  }
+
+  /// Signs into Firebase Auth with [email] + [password] (no Firestore read
+  /// required), then finds-or-rebuilds the local SQLite row from the Firestore
+  /// users/{uid} profile. Returns the local user map on success, or null if the
+  /// Firebase sign-in itself failed (wrong password, no such account, offline).
+  Future<Map<String, dynamic>?> _signInWithEmailAndHydrate(
+    String email,
+    String password,
+    String passwordHash,
+  ) async {
+    try {
+      await _signInWithEmail(email, password);
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Email sign-in failed for "$email": ${e.code}');
+      return null;
+    } catch (e) {
+      if (_looksLikePigeonCastError(e)) {
+        final recovered = _auth.currentUser;
+        if (recovered == null ||
+            recovered.email?.toLowerCase() != email.toLowerCase()) {
+          debugPrint('Email sign-in pigeon cast with no recoverable session.');
+          return null;
+        }
+        // Session is valid despite the plugin cast error — continue.
+      } else {
+        debugPrint('Email sign-in unexpected error for "$email": $e');
+        return null;
+      }
+    }
+
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return null;
+
+    final cloudProfile = await _loadCloudUserProfile(uid);
+
+    // ── Resolve the role from the strongest available signal ──────────────
+    // Priority: admin-email allowlist (survives a Firestore wipe) → the
+    // admins/{uid} Firestore doc → the cloud users/{uid} profile role →
+    // default 'driver'. This is what previously regressed: with Firestore
+    // cleared, an admin had no signal and was rebuilt as a driver.
+    String resolvedRole = (cloudProfile?['role'] as String?) ?? 'driver';
+    if (AppConstants.isAdminEmail(email) || await _isAdminInFirestore(uid)) {
+      resolvedRole = 'admin';
+    }
+
+    Map<String, dynamic>? localRow =
+        await _db.getUserByFirebaseUid(uid) ?? await _resolveLocalUser(email);
+
+    if (localRow == null) {
+      // Rebuild a local row from the cloud profile (or minimal defaults).
+      final cloudUsername = (cloudProfile?['username'] as String?)?.trim();
+      final resolvedUsername =
+          (cloudUsername != null && cloudUsername.isNotEmpty)
+              ? cloudUsername
+              : await _deriveUniqueUsername(email);
+      try {
+        await _db.createUser(
+          resolvedUsername,
+          passwordHash,
+          resolvedRole,
+          fullName: (cloudProfile?['full_name'] as String?) ?? '',
+          email: email,
+          firebaseUid: uid,
+          busNumber: (cloudProfile?['bus_number'] as String?) ?? '',
+          vehicleType: (cloudProfile?['vehicle_type'] as String?) ?? '',
+          vehicleNumber: (cloudProfile?['vehicle_number'] as String?) ?? '',
+        );
+      } catch (e) {
+        debugPrint('Email-login local row rebuild failed: $e');
+      }
+      localRow =
+          await _db.getUserByFirebaseUid(uid) ?? await _resolveLocalUser(email);
+    } else {
+      // Ensure the existing row carries the Firebase UID.
+      final existingUid = (localRow['firebase_uid'] as String?)?.trim() ?? '';
+      final localId = localRow['id'];
+      if (existingUid.isEmpty && localId is int) {
+        try {
+          await _db.updateUserFirebaseUid(localId, uid);
+          localRow = await _db.getUserByFirebaseUid(uid) ?? localRow;
+        } catch (e) {
+          debugPrint('Email-login UID backfill failed: $e');
+        }
+      }
+    }
+
+    // Promote the local row to admin if our resolved role says so but the
+    // stored row doesn't (e.g. it was rebuilt as a driver before, or the
+    // admins doc/allowlist now applies). Never downgrade an existing admin.
+    if (localRow != null) {
+      final storedRole = (localRow['role'] as String?) ?? 'driver';
+      final effectiveRole =
+          (storedRole == 'admin' || resolvedRole == 'admin') ? 'admin' : storedRole;
+      if (effectiveRole != storedRole) {
+        final localId = localRow['id'];
+        if (localId is int) {
+          try {
+            await _db.updateUserRole(localId, effectiveRole);
+          } catch (e) {
+            debugPrint('Email-login role update failed: $e');
+          }
+        }
+        localRow = Map<String, dynamic>.from(localRow)..['role'] = effectiveRole;
+      }
+    }
+
+    return localRow;
+  }
+
+  /// Reads the admins/{uid} Firestore doc to confirm admin status. Returns
+  /// false on any error (offline, permission, missing doc).
+  Future<bool> _isAdminInFirestore(String uid) async {
+    if (uid.isEmpty) return false;
+    try {
+      final doc = await _cloudFirestore.collection('admins').doc(uid).get();
+      if (!doc.exists) return false;
+      final data = doc.data();
+      return data != null && data['isAdmin'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Derives a unique SQLite username from an email local-part, since the
+  /// signup form no longer asks for a username but the schema requires one.
+  Future<String> _deriveUniqueUsername(String email) async {
+    final base = email.split('@').first.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    final seed = base.isEmpty ? 'user' : base;
+    var candidate = seed;
+    var suffix = 0;
+    while (await _db.getUserByUsernameInsensitive(candidate) != null) {
+      suffix++;
+      candidate = '$seed$suffix';
+    }
+    return candidate;
+  }
+
+  /// Recovery path for when a user exists in Firebase Auth but has no local
+  /// SQLite row (e.g. a fresh install wiped the local DB). Attempts to sign
+  /// into Firebase using the supplied [identifier] + [password], then rebuilds
+  /// the local SQLite row from the Firestore users/{uid} profile.
+  ///
+  /// Email resolution order for sign-in:
+  ///   1. If [identifier] is itself an email, use it directly.
+  ///   2. Look up the Firestore users collection by username to get the real
+  ///      registration email.
+  ///   3. Fall back to the synthetic "username@traxio.app" email.
+  ///
+  /// Returns the rebuilt local user map on success, or null if recovery is not
+  /// possible (no matching account, wrong password, offline, etc.).
+  Future<Map<String, dynamic>?> _recoverLocalUserFromFirebase(
+    String identifier,
+    String password,
+  ) async {
+    if (password.isEmpty) return null;
+
+    // Build the ordered list of candidate emails to try signing in with.
+    final candidateEmails = <String>[];
+    if (identifier.contains('@')) {
+      candidateEmails.add(identifier.toLowerCase());
+    }
+
+    // Try to find the real email via the Firestore profile (by username).
+    Map<String, dynamic>? cloudProfile;
+    if (!identifier.contains('@')) {
+      cloudProfile = await _loadCloudUserProfileByUsername(identifier);
+      final profileEmail =
+          (cloudProfile?['email'] as String?)?.trim().toLowerCase() ?? '';
+      if (profileEmail.isNotEmpty && !candidateEmails.contains(profileEmail)) {
+        candidateEmails.add(profileEmail);
+      }
+      // Synthetic fallback.
+      final synthetic = '${identifier.toLowerCase()}@traxio.app';
+      if (!candidateEmails.contains(synthetic)) {
+        candidateEmails.add(synthetic);
+      }
+    }
+
+    if (candidateEmails.isEmpty) return null;
+
+    User? firebaseUser;
+    for (final email in candidateEmails) {
+      try {
+        final credential = await _auth.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        firebaseUser = credential.user;
+        if (firebaseUser != null) {
+          debugPrint('Recovery: signed into Firebase via "$email".');
+          break;
+        }
+      } on FirebaseAuthException catch (e) {
+        // user-not-found / wrong-password / invalid-credential → try next.
+        debugPrint('Recovery sign-in attempt failed for "$email": ${e.code}');
+        continue;
+      } catch (e) {
+        if (_looksLikePigeonCastError(e)) {
+          final recovered = _auth.currentUser;
+          if (recovered != null &&
+              recovered.email != null &&
+              recovered.email!.toLowerCase() == email) {
+            firebaseUser = recovered;
+            debugPrint(
+                'Recovery: recovered session via "$email" after plugin cast error.');
+            break;
+          }
+        }
+        debugPrint('Recovery sign-in unexpected error for "$email": $e');
+        continue;
+      }
+    }
+
+    if (firebaseUser == null) {
+      return null;
+    }
+
+    final uid = firebaseUser.uid;
+
+    // Prefer the authoritative Firestore profile (now readable with a session).
+    final profile =
+        await _loadCloudUserProfile(uid) ?? cloudProfile ?? <String, dynamic>{};
+
+    final resolvedUsername = (profile['username'] as String?)?.trim().isNotEmpty == true
+        ? (profile['username'] as String).trim()
+        : (identifier.contains('@') ? identifier.split('@').first : identifier);
+    final resolvedEmail = (profile['email'] as String?)?.trim().isNotEmpty == true
+        ? (profile['email'] as String).trim()
+        : (firebaseUser.email ?? '');
+    var resolvedRole = (profile['role'] as String?) ?? 'driver';
+    // Admin signal that survives a Firestore wipe: the email allowlist or the
+    // admins/{uid} doc. Otherwise an admin recovered on a fresh install would
+    // be rebuilt as a driver and land on the wrong UI.
+    if (AppConstants.isAdminEmail(resolvedEmail) ||
+        AppConstants.isAdminEmail(firebaseUser.email) ||
+        await _isAdminInFirestore(uid)) {
+      resolvedRole = 'admin';
+    }
+
+    try {
+      // Rebuild the local row only if one doesn't already exist for this UID.
+      final existingByUid = await _db.getUserByFirebaseUid(uid);
+      if (existingByUid == null) {
+        await _db.createUser(
+          resolvedUsername,
+          DbHelper.hashPassword(password),
+          resolvedRole,
+          fullName: (profile['full_name'] as String?) ?? '',
+          email: resolvedEmail,
+          firebaseUid: uid,
+          busNumber: (profile['bus_number'] as String?) ?? '',
+          vehicleType: (profile['vehicle_type'] as String?) ?? '',
+          vehicleNumber: (profile['vehicle_number'] as String?) ?? '',
+        );
+        debugPrint('Recovery: rebuilt local SQLite row for "$resolvedUsername".');
+      }
+    } catch (e) {
+      debugPrint('Recovery: local row rebuild failed: $e');
+      // Even if the rebuild failed, the Firebase session is valid; fall through
+      // and return whatever local row we can resolve.
+    }
+
+    final rebuilt = await _resolveLocalUser(resolvedUsername) ??
+        await _resolveLocalUser(resolvedEmail);
+    return rebuilt;
   }
 
   /// Backfills the SQLite firebase_uid column for any local user whose row
@@ -155,7 +407,26 @@ class AuthProvider extends ChangeNotifier {
   ) async {
     final existingUid =
         (localUser['firebase_uid'] as String?)?.trim() ?? '';
-    if (existingUid.isNotEmpty) {
+
+    // Short-circuit ONLY when a Firebase Auth session is already active — that
+    // live session (request.auth) is what Firestore rules actually require.
+    // We must NOT skip merely because firebase_uid is already saved in SQLite:
+    // on a repeat login the UID is present but _auth.currentUser is null, so
+    // skipping here left the admin with no Firebase session and every
+    // Firestore read/write (incl. delete) failed with permission-denied.
+    final activeUid = _auth.currentUser?.uid;
+    if (activeUid != null && activeUid.isNotEmpty) {
+      final localId = localUser['id'];
+      if (localId is int && existingUid != activeUid) {
+        // Live session UID drifted from SQLite — reconcile to the session.
+        try {
+          await _db.updateUserFirebaseUid(localId, activeUid);
+        } catch (_) {}
+        final synced = Map<String, dynamic>.from(localUser)
+          ..['firebase_uid'] = activeUid;
+        _setCurrentUser(synced);
+        return synced;
+      }
       return localUser;
     }
 
@@ -314,7 +585,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> register({
     required String fullName,
-    required String username,
+    String username = '',
     required String email,
     required String password,
     required String role,
@@ -323,13 +594,11 @@ class AuthProvider extends ChangeNotifier {
     String busNumber = '',
   }) async {
     _lastAuthError = null;
-    final safeUsername = username.trim();
-    final safeUsernameLower = safeUsername.toLowerCase();
     final safeEmail = email.trim().toLowerCase();
     final safeFullName = fullName.trim();
 
-    if (safeUsername.isEmpty || safeEmail.isEmpty) {
-      _lastAuthError = 'Username and email are required.';
+    if (safeFullName.isEmpty || safeEmail.isEmpty) {
+      _lastAuthError = 'Full name and email are required.';
       return false;
     }
 
@@ -339,11 +608,25 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
 
+    // The signup form no longer collects a username. Keep an internal username
+    // (required by the SQLite schema and legacy code) by deriving a unique one
+    // from the email local-part when none is supplied.
+    var safeUsername = username.trim();
+    if (safeUsername.isEmpty) {
+      safeUsername = await _deriveUniqueUsername(safeEmail);
+    }
+    final safeUsernameLower = safeUsername.toLowerCase();
+
     final existingUsername =
         await _db.getUserByUsernameInsensitive(safeUsernameLower);
     if (existingUsername != null) {
-      _lastAuthError = 'Username "$safeUsername" is already taken.';
-      return false;
+      // Derived usernames are guaranteed unique; an explicit one may collide.
+      if (username.trim().isEmpty) {
+        safeUsername = await _deriveUniqueUsername(safeEmail);
+      } else {
+        _lastAuthError = 'Username "$safeUsername" is already taken.';
+        return false;
+      }
     }
 
     final existingEmail = await _db.getUserByEmail(safeEmail);
@@ -360,9 +643,55 @@ class AuthProvider extends ChangeNotifier {
       );
       firebaseUser = credential.user;
     } on FirebaseAuthException catch (e) {
-      _lastAuthError = _mapFirebaseAuthError(e);
-      debugPrint('Firebase account creation failed: ${e.code} ${e.message}');
-      return false;
+      if (e.code == 'email-already-in-use') {
+        // A Firebase Auth account already exists for this email (e.g. the
+        // local SQLite row was wiped on reinstall, or a prior registration
+        // half-completed). Sign in to recover the existing UID and continue
+        // creating a fresh local row under it, completing registration.
+        try {
+          final credential = await _auth.signInWithEmailAndPassword(
+            email: safeEmail,
+            password: password,
+          );
+          firebaseUser = credential.user;
+          debugPrint(
+              'Registration: email already in use — signed into existing Firebase account.');
+        } on FirebaseAuthException catch (signInErr) {
+          _lastAuthError = (signInErr.code == 'wrong-password' ||
+                  signInErr.code == 'invalid-credential')
+              ? 'This email is already registered. Please log in with the correct password.'
+              : _mapFirebaseAuthError(signInErr);
+          debugPrint(
+              'Registration sign-in fallback failed: ${signInErr.code} ${signInErr.message}');
+          return false;
+        } catch (signInErr) {
+          if (_looksLikePigeonCastError(signInErr)) {
+            final recovered = _auth.currentUser;
+            if (recovered != null &&
+                recovered.email != null &&
+                recovered.email!.toLowerCase() == safeEmail) {
+              firebaseUser = recovered;
+              debugPrint(
+                  'Registration: recovered existing account after plugin cast error.');
+            } else {
+              _lastAuthError =
+                  'Could not sign into the existing account. Please try logging in.';
+              debugPrint(
+                  'Registration sign-in fallback plugin cast with no recoverable session: $signInErr');
+              return false;
+            }
+          } else {
+            _lastAuthError =
+                'Could not sign into the existing account. Please try logging in.';
+            debugPrint('Registration sign-in fallback error: $signInErr');
+            return false;
+          }
+        }
+      } else {
+        _lastAuthError = _mapFirebaseAuthError(e);
+        debugPrint('Firebase account creation failed: ${e.code} ${e.message}');
+        return false;
+      }
     } catch (e) {
       if (_looksLikePigeonCastError(e)) {
         final currentUser = _auth.currentUser;
@@ -661,26 +990,6 @@ class AuthProvider extends ChangeNotifier {
           .get();
       if (legacyQuery.docs.isNotEmpty) {
         return legacyQuery.docs.first.data();
-      }
-    } catch (_) {
-      return null;
-    }
-
-    return null;
-  }
-
-  Future<Map<String, dynamic>?> _loadCloudUserProfileByEmail(String email) async {
-    final normalized = email.trim().toLowerCase();
-    if (normalized.isEmpty) return null;
-
-    try {
-      final query = await _cloudFirestore
-          .collection('users')
-          .where('email', isEqualTo: normalized)
-          .limit(1)
-          .get();
-      if (query.docs.isNotEmpty) {
-        return query.docs.first.data();
       }
     } catch (_) {
       return null;
